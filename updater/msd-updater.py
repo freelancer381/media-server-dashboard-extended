@@ -35,7 +35,7 @@ UPDATER_VERSION = "1.0.0"
 CONF_FILE = os.environ.get("MSD_UPDATER_CONF") or "/etc/media-server-dashboard/updater.json"
 VERSION_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 ISSUER = "https://token.actions.githubusercontent.com"
-STEPS = ["Release prüfen", "Signatur prüfen", "Herunterladen", "Sicherung", "Entpacken", "Umschalten", "Neustart", "Gesundheitscheck", "Aufräumen"]
+STEPS = ["Check release", "Check signature", "Download", "Back up", "Unpack", "Switch over", "Restart", "Health check", "Clean up"]
 
 
 class Refused(Exception):
@@ -143,7 +143,7 @@ class Updater:
         for a in rel.get("assets") or []:
             if a.get("name") == name:
                 return self._get(a["browser_download_url"], accept="application/octet-stream", limit=limit)
-        raise Refused(f"Release {rel.get('tag_name')} hat keine Datei {name}")
+        raise Refused(f"release {rel.get('tag_name')} has no file {name}")
 
     # ---------- trust ----------
     def verify(self, version, doc, bundle, workdir):
@@ -164,32 +164,32 @@ class Updater:
         try:
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=180, env={**os.environ, "HOME": workdir})
         except (OSError, subprocess.TimeoutExpired) as e:
-            raise Refused(f"cosign konnte nicht laufen: {e}")
+            raise Refused(f"cosign could not run: {e}")
         if r.returncode != 0:
             out = (r.stderr or r.stdout).strip().splitlines()
-            raise Refused("Signatur ungültig" + (f": {out[-1][:300]}" if out else ""))
+            raise Refused("invalid signature" + (f": {out[-1][:300]}" if out else ""))
 
     def evaluate(self, version, doc, current):
         """Read the signed release.json and its upgrade policy. Raises Refused with the reason."""
         try:
             rel = json.loads(doc)
         except ValueError:
-            raise Refused("release.json ist kein JSON")
+            raise Refused("release.json is not JSON")
         if rel.get("version") != version or rel.get("tag") != f"v{version}":
-            raise Refused("release.json gehört zu einer anderen Version")
+            raise Refused("release.json belongs to another version")
         art = rel.get("artifact") or {}
         if not re.fullmatch(r"[A-Za-z0-9._-]+\.tar\.gz", art.get("name") or "") or not re.fullmatch(r"[0-9a-f]{64}", art.get("sha256") or ""):
-            raise Refused("release.json: Archiv fehlt")
+            raise Refused("release.json: the archive is missing")
         if vtuple(version) <= vtuple(current):
-            raise Refused(f"{version} ist nicht neuer als {current}")
+            raise Refused(f"{version} is not newer than {current}")
         pol = rel.get("policy") or {}
         if pol.get("minimumFromVersion") and vtuple(current) < vtuple(pol["minimumFromVersion"]):
-            raise Refused(f"Erst auf {pol['minimumFromVersion']} oder neuer aktualisieren")
+            raise Refused(f"update to {pol['minimumFromVersion']} or newer first")
         if pol.get("requiresUpdater") and not satisfies(UPDATER_VERSION, pol["requiresUpdater"]):
-            raise Refused(f"Braucht einen neueren Updater ({pol['requiresUpdater']}): install-lxc.sh --update ausführen")
+            raise Refused(f"needs a newer update service ({pol['requiresUpdater']}): run install-lxc.sh --update")
         manual = pol.get("manualSteps") or {}
         if manual.get("required"):
-            raise Refused("Manuelle Schritte nötig: " + (manual.get("summary") or "") + (f" ({manual['url']})" if manual.get("url") else ""))
+            raise Refused("manual steps needed: " + (manual.get("summary") or "") + (f" ({manual['url']})" if manual.get("url") else ""))
         return rel
 
     # ---------- the installed versions ----------
@@ -217,22 +217,22 @@ class Updater:
     def restart(self):
         r = subprocess.run([self.c["systemctl"], "restart", self.c["service"]], capture_output=True, text=True, timeout=90)
         if r.returncode != 0:
-            raise Failed(f"Neustart fehlgeschlagen: {r.stderr.strip()[:300]}")
+            raise Failed(f"restart failed: {r.stderr.strip()[:300]}")
 
     def healthy(self, version):
         deadline = time.time() + self.c["health_timeout"]
-        last = "keine Antwort"
+        last = "no answer"
         while time.time() < deadline:
             try:
                 with urllib.request.urlopen(self.c["health_url"], timeout=5) as r:
                     got = json.load(r).get("version")
                 if got == version:
                     return True
-                last = f"meldet Version {got}"
+                last = f"reports version {got}"
             except (OSError, ValueError) as e:
                 last = str(e)
             time.sleep(1.5)
-        raise Failed(f"Gesundheitscheck: {last}")
+        raise Failed(f"health check: {last}")
 
     @staticmethod
     def extract(archive, dest, version):
@@ -242,12 +242,12 @@ class Updater:
             for m in tar.getmembers():
                 name = m.name
                 if not name.startswith(prefix) and name != prefix.rstrip("/"):
-                    raise Failed(f"unerwarteter Pfad im Archiv: {name}")
+                    raise Failed(f"unexpected path in the archive: {name}")
                 rel = name[len(prefix):]
                 if not rel:
                     continue
                 if rel.startswith("/") or ".." in rel.split("/") or "\\" in rel:
-                    raise Failed(f"unsicherer Pfad im Archiv: {name}")
+                    raise Failed(f"unsafe path in the archive: {name}")
                 path = os.path.join(dest, rel)
                 if m.isdir():
                     os.makedirs(path, mode=0o755, exist_ok=True)
@@ -257,9 +257,9 @@ class Updater:
                         shutil.copyfileobj(src, out)
                     os.chmod(path, 0o755 if m.mode & 0o111 else 0o644)
                 elif m.issym() or m.islnk():
-                    raise Failed(f"Links im Archiv sind nicht erlaubt: {name}")
+                    raise Failed(f"links in the archive are not allowed: {name}")
                 else:
-                    raise Failed(f"unerwarteter Eintrag im Archiv: {name}")
+                    raise Failed(f"unexpected entry in the archive: {name}")
 
     def backup(self, version):
         """The app's settings and game, before anything changes. The last few are kept."""
@@ -329,40 +329,40 @@ class Updater:
                        "requested_by": requested_by, "started": int(time.time()), "steps": [{"name": s, "state": "pending"} for s in STEPS],
                        "log": [], "available": self.status.get("available"), "refused": self.status.get("refused", []),
                        "last": self.status.get("last"), "current": current}
-        self.log(f"Update {current} → {version} (angefragt von {requested_by})")
+        self.log(f"Update {current} → {version} (requested by {requested_by})")
         work = os.path.join(self.c["work_dir"], "work", version)
         shutil.rmtree(work, ignore_errors=True)
         os.makedirs(work, mode=0o700)
         switched = False
         try:
-            self.step("Release prüfen")
+            self.step("Check release")
             rel = self.release(version)
             doc = self.asset(rel, "release.json", 1_000_000)
             bundle = self.asset(rel, "release.json.sigstore.json", 1_000_000)
-            self.step("Release prüfen", "done")
-            self.step("Signatur prüfen")
+            self.step("Check release", "done")
+            self.step("Check signature")
             self.verify(version, doc, bundle, work)
             meta = self.evaluate(version, doc, current)
-            self.log("Signatur gültig: release.json stammt vom Release-Workflow")
-            self.step("Signatur prüfen", "done")
+            self.log("Signature valid: release.json comes from the release workflow")
+            self.step("Check signature", "done")
 
-            self.step("Herunterladen")
+            self.step("Download")
             art = meta["artifact"]
             data = self.asset(rel, art["name"])
             digest = hashlib.sha256(data).hexdigest()
             if digest != art["sha256"]:
-                raise Refused(f"SHA-256 des Archivs passt nicht ({digest[:12]}… statt {art['sha256'][:12]}…)")
+                raise Refused(f"the archive's SHA-256 does not match ({digest[:12]}… instead of {art['sha256'][:12]}…)")
             archive = os.path.join(work, art["name"])
             with open(archive, "wb") as f:
                 f.write(data)
-            self.log(f"{art['name']} geladen ({len(data) // 1024} KB), SHA-256 stimmt")
-            self.step("Herunterladen", "done")
+            self.log(f"{art['name']} downloaded ({len(data) // 1024} KB), SHA-256 matches")
+            self.step("Download", "done")
 
-            self.step("Sicherung")
-            self.log(f"Sicherung: {self.backup(current)}")
-            self.step("Sicherung", "done")
+            self.step("Back up")
+            self.log(f"Backup: {self.backup(current)}")
+            self.step("Back up", "done")
 
-            self.step("Entpacken")
+            self.step("Unpack")
             rdir = os.path.join(self.c["app_root"], "releases")
             os.makedirs(rdir, mode=0o755, exist_ok=True)
             dest = os.path.join(rdir, version)
@@ -372,66 +372,66 @@ class Updater:
             self.extract(archive, staging, version)
             with open(os.path.join(staging, "VERSION"), encoding="utf-8") as f:
                 if f.read().strip() != version:
-                    raise Failed("VERSION im Archiv passt nicht")
+                    raise Failed("VERSION in the archive does not match")
             if not os.path.isfile(os.path.join(staging, "server.py")):
-                raise Failed("server.py fehlt im Archiv")
+                raise Failed("server.py is missing from the archive")
             r = subprocess.run([sys.executable, "-m", "py_compile", *[os.path.join(staging, f) for f in os.listdir(staging) if f.endswith(".py")]],
                                capture_output=True, text=True)
             if r.returncode != 0:
-                raise Failed("Python-Dateien lassen sich nicht übersetzen: " + r.stderr[-300:])
+                raise Failed("the Python files do not compile: " + r.stderr[-300:])
             if os.path.realpath(dest) == previous:
-                raise Failed("diese Version läuft schon")
+                raise Failed("this version is already running")
             shutil.rmtree(dest, ignore_errors=True)
             os.rename(staging, dest)
-            self.step("Entpacken", "done")
+            self.step("Unpack", "done")
 
-            self.step("Umschalten")
+            self.step("Switch over")
             self.switch(dest)
             switched = True
-            self.step("Umschalten", "done")
-            self.step("Neustart")
+            self.step("Switch over", "done")
+            self.step("Restart")
             self.restart()
-            self.step("Neustart", "done")
-            self.step("Gesundheitscheck")
+            self.step("Restart", "done")
+            self.step("Health check")
             self.healthy(version)
-            self.log(f"Version {version} läuft")
-            self.step("Gesundheitscheck", "done")
-            self.step("Aufräumen")
+            self.log(f"Version {version} is running")
+            self.step("Health check", "done")
+            self.step("Clean up")
             self.prune()
             shutil.rmtree(work, ignore_errors=True)
-            self.step("Aufräumen", "done")
+            self.step("Clean up", "done")
             self.status.update(result="succeeded", finished=int(time.time()), available=None, current=version)
-            self.log("Fertig")
+            self.log("Done")
         except Refused as e:
             self.step(self.status.get("step") or STEPS[0], "failed")
             self.status.update(result="refused", error=str(e), finished=int(time.time()))
-            self.log(f"Abgelehnt: {e}. Es wurde nichts geändert.")
+            self.log(f"Refused: {e}. Nothing was changed.")
         except Exception as e:  # noqa: BLE001 - every failure must end in a known state
             self.step(self.status.get("step") or STEPS[0], "failed")
             msg = f"{type(e).__name__}: {e}" if not isinstance(e, Failed) else str(e)
             self.status.update(error=msg[:500], finished=int(time.time()))
-            self.log(f"Fehler: {msg}")
+            self.log(f"Error: {msg}")
             if switched and previous:
                 self.rollback(previous, current)
             else:
                 self.status["result"] = "failed"
-                self.log("Es wurde nichts umgeschaltet; die bisherige Version läuft weiter.")
+                self.log("Nothing was switched over; the previous version keeps running.")
         st = self.status
         st["last"] = {k: st.get(k) for k in ("id", "result", "from", "to", "error", "requested_by", "started", "finished")}
         st["state"] = "attention" if st.get("result") == "attention" else "idle"
         self.save()
 
     def rollback(self, previous, version):
-        self.log(f"Zurück auf {version} …")
+        self.log(f"Back to {version} …")
         try:
             self.switch(previous)
             self.restart()
             self.healthy(version)
             self.status["result"] = "rolled_back"
-            self.log(f"Version {version} läuft wieder.")
+            self.log(f"Version {version} is running again.")
         except Exception as e:  # noqa: BLE001
             self.status["result"] = "attention"
-            self.log(f"Zurückschalten fehlgeschlagen: {e}. Bitte von Hand prüfen: systemctl status {self.c['service']}")
+            self.log(f"Switching back failed: {e}. Please check by hand: systemctl status {self.c['service']}")
 
     def run_request(self):
         """The app's request: read it once (no symlinks, small), remove it, do it."""
@@ -450,7 +450,7 @@ class Updater:
         try:
             req = json.loads(raw)
         except ValueError:
-            return self.log("Anfrage der App war kein JSON; ignoriert")
+            return self.log("The app's request was not JSON; ignored")
         who = re.sub(r"[^\w.@-]", "", str(req.get("requested_by") or "app"))[:40]
         if req.get("action") == "check":
             return self.check(who)
@@ -462,8 +462,8 @@ class Updater:
                 avail = self.status.get("available") or {}
             if avail.get("version") == req["version"] and avail.get("installable"):
                 return self.install(req["version"], who)
-            return self.log(f"Version {req['version']} ist nicht als installierbar geprüft; ignoriert")
-        self.log("Unbekannte Anfrage der App; ignoriert")
+            return self.log(f"Version {req['version']} was not checked as installable; ignored")
+        self.log("Unknown request from the app; ignored")
 
 
 def main(argv):

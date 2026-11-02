@@ -25,17 +25,17 @@ PROBLEMS = ("health", "error")
 
 BADGES = [
     # id, emoji, name, description, test(player, event, now)
-    ("first_import", "🎉", "Erster Import", "Das erste Stück in der Bibliothek", lambda p, e, n: p["counts"].get("import", 0) >= 1),
-    ("import_10", "📚", "Sammler", "10 Importe", lambda p, e, n: p["counts"].get("import", 0) >= 10),
-    ("import_100", "🏛️", "Archivar", "100 Importe", lambda p, e, n: p["counts"].get("import", 0) >= 100),
-    ("import_1000", "🐉", "Hortdrache", "1000 Importe", lambda p, e, n: p["counts"].get("import", 0) >= 1000),
-    ("download_100", "🚚", "Spediteur", "100 fertige Downloads", lambda p, e, n: p["counts"].get("download", 0) >= 100),
-    ("grab_50", "🛒", "Schnäppchenjäger", "50 Releases geholt", lambda p, e, n: p["counts"].get("grab", 0) >= 50),
-    ("night_owl", "🦉", "Nachteule", "Etwas zwischen 0 und 5 Uhr erledigt", lambda p, e, n: e["xp"] > 0 and datetime.fromtimestamp(n).hour < 5),
-    ("busy_day", "🔥", "Großkampftag", "20 erledigte Aufgaben an einem Tag", lambda p, e, n: sum(v for k, v in p["today"]["counts"].items() if XP.get(k, 0) > 0) >= 20),
-    ("level_5", "⭐", "Profi", "Level 5 erreicht", lambda p, e, n: p["level"] >= 5),
-    ("level_10", "🌟", "Legende", "Level 10 erreicht", lambda p, e, n: p["level"] >= 10),
-    ("streak_7", "🛡️", "Eine Woche fehlerfrei", "7 Tage ohne Fehler", lambda p, e, n: n - p["clean_since"] >= 7 * 86400),
+    ("first_import", "🎉", "First import", "The first item in the library", lambda p, e, n: p["counts"].get("import", 0) >= 1),
+    ("import_10", "📚", "Collector", "10 imports", lambda p, e, n: p["counts"].get("import", 0) >= 10),
+    ("import_100", "🏛️", "Archivist", "100 imports", lambda p, e, n: p["counts"].get("import", 0) >= 100),
+    ("import_1000", "🐉", "Hoarding dragon", "1000 imports", lambda p, e, n: p["counts"].get("import", 0) >= 1000),
+    ("download_100", "🚚", "Courier", "100 finished downloads", lambda p, e, n: p["counts"].get("download", 0) >= 100),
+    ("grab_50", "🛒", "Bargain hunter", "50 releases grabbed", lambda p, e, n: p["counts"].get("grab", 0) >= 50),
+    ("night_owl", "🦉", "Night owl", "Got something done between midnight and 5 am", lambda p, e, n: e["xp"] > 0 and datetime.fromtimestamp(n).hour < 5),
+    ("busy_day", "🔥", "Big day", "20 jobs done in one day", lambda p, e, n: sum(v for k, v in p["today"]["counts"].items() if XP.get(k, 0) > 0) >= 20),
+    ("level_5", "⭐", "Pro", "Reached level 5", lambda p, e, n: p["level"] >= 5),
+    ("level_10", "🌟", "Legend", "Reached level 10", lambda p, e, n: p["level"] >= 10),
+    ("streak_7", "🛡️", "A clean week", "7 days without errors", lambda p, e, n: n - p["clean_since"] >= 7 * 86400),
 ]
 BADGE_INFO = {b[0]: {"emoji": b[1], "name": b[2], "about": b[3]} for b in BADGES}
 
@@ -154,11 +154,11 @@ class Live:
         p["level"] = level_for(p["xp"])
         extra = []
         if p["level"] > before:
-            extra.append(("level", f"erreicht Level {p['level']}! 🎉", {"level": p["level"]}))
+            extra.append(("level", f"reached level {p['level']}! 🎉", {"level": p["level"]}))
         for bid, emoji, name, about, test in BADGES:
             if bid not in p["badges"] and test(p, ev, now):
                 p["badges"].append(bid)
-                extra.append(("badge", f"bekommt das Abzeichen {emoji} „{name}“ ({about})", {"badge": bid}))
+                extra.append(("badge", f"earned the badge {emoji} “{name}” ({about})", {"badge": bid}))
         return extra
 
     def summary(self):
@@ -273,28 +273,28 @@ def parse_hook(body, source_hint=""):
         q = _quality(body)
         qs = f" in {q}" if q else ""
         if et == "Test":
-            return source, "test", "Webhook-Test angekommen 👋", "info"
+            return source, "test", "Webhook test received 👋", "info"
         if et == "Grab":
-            return source, "grab", f"hat {subject or 'ein Release'}{qs} geholt", "info"
+            return source, "grab", f"grabbed {subject or 'a release'}{qs}", "info"
         if et in ("Download", "Import", "AlbumImport", "BookImport", "TrackRetag"):
             if body.get("isUpgrade"):
-                return source, "upgrade", f"hat {subject} auf{qs or ' eine bessere Qualität'} verbessert", "success"
-            return source, "import", f"hat {subject}{qs} importiert", "success"
+                return source, "upgrade", f"upgraded {subject} to {q or 'a better quality'}", "success"
+            return source, "import", f"imported {subject}{qs}", "success"
         if et in ("MovieAdded", "SeriesAdd", "ArtistAdd", "AuthorAdded", "BookAdded"):
-            return source, "added", f"hat {subject} neu auf die Liste gesetzt", "info"
+            return source, "added", f"added {subject} to the list", "info"
         if et.endswith("Delete") or et.endswith("Deleted"):
-            return source, "delete", f"hat {subject or 'etwas'} gelöscht", "info"
+            return source, "delete", f"deleted {subject or 'something'}", "info"
         if et == "Rename":
-            return source, "info", f"hat Dateien von {subject or 'etwas'} umbenannt", "info"
+            return source, "info", f"renamed the files of {subject or 'something'}", "info"
         if et == "Health":
             level = "error" if str(body.get("level", "")).lower() == "error" else "warning"
-            return source, "health", clean(body.get("message")) or "meldet ein Problem", level
+            return source, "health", clean(body.get("message")) or "reports a problem", level
         if et == "HealthRestored":
-            return source, "recover", f"Problem gelöst: {clean(body.get('message'))}".rstrip(": "), "success"
+            return source, "recover", f"problem solved: {clean(body.get('message'))}".rstrip(": "), "success"
         if et == "ApplicationUpdate":
-            return source, "info", f"wurde auf {clean(body.get('newVersion'), 30)} aktualisiert", "info"
+            return source, "info", f"was updated to {clean(body.get('newVersion'), 30)}", "info"
         if et == "ManualInteractionRequired":
-            return source, "health", f"braucht Hilfe bei {subject or 'einem Download'}", "warning"
+            return source, "health", f"needs help with {subject or 'a download'}", "warning"
         return source, "info", f"{et}: {subject}".rstrip(": "), "info"
 
     if "NotificationType" in body:  # Jellyfin webhook plugin (see the template in the settings)
@@ -302,16 +302,16 @@ def parse_hook(body, source_hint=""):
         nt = str(body["NotificationType"])
         name = clean(body.get("Name") or body.get("ItemName"), 120)
         series = clean(body.get("SeriesName"), 80)
-        what = f"{series} – {name}" if series and name and series != name else name or "etwas"
+        what = f"{series} – {name}" if series and name and series != name else name or "something"
         user = clean(body.get("NotificationUsername") or body.get("Username"), 40)
         if nt == "PlaybackStart":
-            return source, "play", f"{user + ' schaut' if user else 'Wiedergabe:'} {what}", "info"
+            return source, "play", f"{user + ' is watching' if user else 'now playing:'} {what}", "info"
         if nt == "PlaybackStop":
-            return source, "info", f"{user + ' hat' if user else 'Wiedergabe von'} {what} {'gestoppt' if user else 'beendet'}", "info"
+            return source, "info", f"{user + ' stopped' if user else 'stopped playing'} {what}", "info"
         if nt == "ItemAdded":
-            return source, "import", f"hat {what} in die Bibliothek aufgenommen", "success"
+            return source, "import", f"added {what} to the library", "success"
         if nt in ("AuthenticationFailure",):
-            return source, "health", f"Fehlgeschlagene Anmeldung{' von ' + user if user else ''}", "warning"
+            return source, "health", f"failed sign-in{' by ' + user if user else ''}", "warning"
         return source, "info", f"{nt}: {what}", "info"
 
     if "type" in body and ("message" in body or "title" in body) and "version" in body:  # Apprise json://
@@ -325,16 +325,16 @@ def parse_hook(body, source_hint=""):
             return source, "error", text, "error"
         if t == "warning":
             return source, "health", text, "warning"
-        if source.lower() == "bazarr" or "subtitle" in low or "untertitel" in low:
+        if source.lower() == "bazarr" or "subtitle" in low or "untertitel" in low:  # "untertitel": German Bazarr setups
             return source, "subtitle", text, "success"
-        if source.lower() == "sabnzbd" and ("complete" in low or "fertig" in low or "finished" in low):
+        if source.lower() == "sabnzbd" and ("complete" in low or "finished" in low or "fertig" in low):
             return source, "download", text, "success"
         return source, "info", text, "success" if t == "success" else "info"
 
     # Anything else: {"source": "...", "kind": "import", "text": "...", "level": "info", "icon": "🎬"}
     text = body.get("text") or body.get("message") or body.get("title")
     if not text:
-        raise ValueError("Unbekanntes Format: erwartet *arr-Webhook, Jellyfin, Apprise JSON oder {source, text}")
+        raise ValueError("unknown format: expected an *arr webhook, Jellyfin, Apprise JSON or {source, text}")
     source = hint or clean(body.get("source") or body.get("app"), 40) or "Webhook"
     kind = body.get("kind") if body.get("kind") in XP else "info"
     level = body.get("level") if body.get("level") in ("info", "success", "warning", "error") else "info"

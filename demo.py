@@ -105,19 +105,19 @@ def events(live):
     """Made-up chat lines for the office, every few seconds, like a busy evening."""
     import random
     script = [
-        ("Prowlarr", "search", "sucht: {m}", "info"),
-        ("Radarr", "grab", "hat {m} in Bluray-1080p geholt", "info"),
-        ("SABnzbd", "download", "hat {m} fertig geladen", "success"),
-        ("Radarr", "import", "hat {m} importiert", "success"),
-        ("Bazarr", "subtitle", "hat deutsche Untertitel für {m} gefunden", "success"),
-        ("Sonarr", "grab", "hat {s} geholt", "info"),
-        ("Sonarr", "import", "hat {s} importiert", "success"),
-        ("Home Cinema", "play", "{p} schaut {m}", "info"),
-        ("Radarr", "upgrade", "hat {m} auf Bluray-2160p verbessert", "success"),
+        ("Prowlarr", "search", "searching: {m}", "info"),
+        ("Radarr", "grab", "grabbed {m} in Bluray-1080p", "info"),
+        ("SABnzbd", "download", "finished downloading {m}", "success"),
+        ("Radarr", "import", "imported {m}", "success"),
+        ("Bazarr", "subtitle", "found English subtitles for {m}", "success"),
+        ("Sonarr", "grab", "grabbed {s}", "info"),
+        ("Sonarr", "import", "imported {s}", "success"),
+        ("Home Cinema", "play", "{p} is watching {m}", "info"),
+        ("Radarr", "upgrade", "upgraded {m} to Bluray-2160p", "success"),
     ]
     time.sleep(3)
     if not live.recent(1):
-        live.emit("Radarr", "test", "Demo-Modus: hier erscheint, was deine Apps gerade tun 👋", "info")
+        live.emit("Radarr", "test", "Demo mode: what your apps are doing shows up here 👋", "info")
     while True:
         source, kind, text, level = random.choice(script)
         m = "%s (%d)" % random.choice(MOVIES)[:2]

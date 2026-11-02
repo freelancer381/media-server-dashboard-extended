@@ -165,7 +165,7 @@ echo "error: wrong identity: $args" >&2; exit 1
         u = self.updater()
         u.check()
         self.assertIsNone(u.status["available"])
-        self.assertIn("Signatur ungültig", u.status["refused"][0]["reason"])
+        self.assertIn("invalid signature", u.status["refused"][0]["reason"])
 
     def test_wrong_repo_identity_refused(self):
         self.gh.add("0.3.0")
@@ -179,13 +179,13 @@ echo "error: wrong identity: $args" >&2; exit 1
     def test_policy_manual_steps_and_updater_version(self):
         u = self.updater()
         base = {"version": "0.3.0", "tag": "v0.3.0", "artifact": {"name": "a.tar.gz", "sha256": "0" * 64}}
-        with self.assertRaisesRegex(U.Refused, "Manuelle"):
-            u.evaluate("0.3.0", json.dumps({**base, "policy": {"manualSteps": {"required": True, "summary": "Config ändern"}}}), "0.2.0")
-        with self.assertRaisesRegex(U.Refused, "neueren Updater"):
+        with self.assertRaisesRegex(U.Refused, "manual steps"):
+            u.evaluate("0.3.0", json.dumps({**base, "policy": {"manualSteps": {"required": True, "summary": "Change the config"}}}), "0.2.0")
+        with self.assertRaisesRegex(U.Refused, "newer update service"):
             u.evaluate("0.3.0", json.dumps({**base, "policy": {"requiresUpdater": ">=2.0.0"}}), "0.2.0")
-        with self.assertRaisesRegex(U.Refused, "nicht neuer"):
+        with self.assertRaisesRegex(U.Refused, "not newer"):
             u.evaluate("0.2.0", json.dumps({**base, "version": "0.2.0", "tag": "v0.2.0"}), "0.2.0")
-        with self.assertRaisesRegex(U.Refused, "anderen Version"):
+        with self.assertRaisesRegex(U.Refused, "another version"):
             u.evaluate("0.3.0", json.dumps({**base, "version": "0.9.0"}), "0.2.0")
 
     # ---------- install ----------
@@ -223,7 +223,7 @@ echo "error: wrong identity: $args" >&2; exit 1
         def healthy(version):
             calls.append(version)
             if version == "0.3.0":
-                raise U.Failed("Gesundheitscheck: meldet Version 0.2.0")
+                raise U.Failed("health check: reports version 0.2.0")
             return real(version)
         u.healthy = healthy
         u.install("0.3.0")
@@ -239,7 +239,7 @@ echo "error: wrong identity: $args" >&2; exit 1
         u = self.updater()
         u.install("0.3.0")
         self.assertEqual(u.status["last"]["result"], "failed")
-        self.assertIn("unsicherer Pfad", u.status["last"]["error"])
+        self.assertIn("unsafe path", u.status["last"]["error"])
         self.assertEqual(self.current(), "0.2.0")
 
     def test_symlink_in_archive(self):
@@ -249,7 +249,7 @@ echo "error: wrong identity: $args" >&2; exit 1
         self.gh.add("0.3.0", archive=make_archive("0.3.0", extra=[(link, None)]))
         u = self.updater()
         u.install("0.3.0")
-        self.assertIn("Links", u.status["last"]["error"])
+        self.assertIn("links", u.status["last"]["error"])
         self.assertEqual(self.current(), "0.2.0")
 
     def test_broken_python_is_not_switched_to(self):

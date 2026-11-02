@@ -144,10 +144,10 @@ table.home .icon { width: 22px; height: 22px; font-size: 14px; border-radius: 6p
   <header><h1>The Office</h1><span id="summary"></span><a class="glass" href="/">← Dashboard</a></header>
   <div id="stage">
     <div id="scene"><div id="labels"></div><div class="hint">Drag to turn the room · scroll or pinch to zoom</div>
-      <section id="feed" class="glass" aria-label="Live-Feed">
+      <section id="feed" class="glass" aria-label="Live feed">
         <header role="tablist"><button role="tab" aria-selected="true" data-tab="chat">💬 Live</button><button role="tab" aria-selected="false" data-tab="team" id="teamTab">🏆 Team</button>
-          <span class="live" id="liveDot" title="Live-Verbindung"><i></i><span>live</span></span><button class="fold" id="feedFold" aria-label="Feed ein- oder ausklappen">▾</button></header>
-        <div class="pane" id="chat" role="tabpanel" aria-live="polite"><div class="empty">Noch nichts passiert. Sobald deine Apps etwas tun, steht es hier.</div></div>
+          <span class="live" id="liveDot" title="Live connection"><i></i><span>live</span></span><button class="fold" id="feedFold" aria-label="Show or hide the feed">▾</button></header>
+        <div class="pane" id="chat" role="tabpanel" aria-live="polite"><div class="empty">Nothing has happened yet. As soon as your apps do something, it shows up here.</div></div>
         <div class="pane" id="team" role="tabpanel" hidden></div>
       </section>
     </div>
@@ -1364,15 +1364,15 @@ function renderHome(d) {
   const s = d.system || {}, mem = s.memory || {}, hist = d.history || {}, last = (a) => (a && a[a.length - 1]) || 0;
   const cpu = last(hist.cpu), memPct = mem.total ? mem.used / mem.total * 100 : 0;
   const stats = s.host ? `<div class="stats">
-    <div class="stat"><span>CPU · ${escH(s.cores || '-')} Kerne</span><b>${cpu}%</b><div class="bar"><i class="${pctCls(cpu)}" style="width:${cpu}%"></i></div></div>
+    <div class="stat"><span>CPU · ${escH(s.cores || '-')} cores</span><b>${cpu}%</b><div class="bar"><i class="${pctCls(cpu)}" style="width:${cpu}%"></i></div></div>
     <div class="stat"><span>RAM</span><b>${fmtBytes(mem.used)} <span>/ ${fmtBytes(mem.total)}</span></b><div class="bar"><i class="${pctCls(memPct)}" style="width:${memPct.toFixed(0)}%"></i></div></div>
-    <div class="stat"><span>Last (1/5/15 min)</span><b>${(s.load || []).map((x) => x.toFixed(1)).join(' · ') || '-'}</b></div>
-    <div class="stat"><span>Netzwerk</span><b>↓ ${perSec(last(hist.rx))}</b><span>↑ ${perSec(last(hist.tx))}</span></div>
+    <div class="stat"><span>Load (1/5/15 min)</span><b>${(s.load || []).map((x) => x.toFixed(1)).join(' · ') || '-'}</b></div>
+    <div class="stat"><span>Network</span><b>↓ ${perSec(last(hist.rx))}</b><span>↑ ${perSec(last(hist.tx))}</span></div>
   </div>` : '';
   let body;
-  if (!h.tiles.length) body = '<div class="empty">Noch keine Kacheln. Lege sie unter ⚙ Settings → Startseite an.</div>';
+  if (!h.tiles.length) body = '<div class="empty">No tiles yet. Add them under ⚙ Settings → Start page.</div>';
   else if (h.layout === 'table') {
-    body = `<div class="tableWrap"><table class="home"><thead><tr><th>Dienst</th><th>Status</th><th>CPU</th><th>RAM</th><th>Netz</th></tr></thead><tbody>${h.tiles.map((t) => {
+    body = `<div class="tableWrap"><table class="home"><thead><tr><th>Service</th><th>Status</th><th>CPU</th><th>RAM</th><th>Net</th></tr></thead><tbody>${h.tiles.map((t) => {
       const st = tileStatus(t), g = t.guest;
       const name = linkOk(t.url) ? `<a href="${escH(t.url)}" target="_blank" rel="noopener noreferrer">${escH(t.name)}</a>` : `<span>${escH(t.name)}</span>`;
       return `<tr data-tip="${escH(t.check)}${g ? `\n${g.type === 'lxc' ? 'LXC' : 'VM'} ${g.id} ${g.name || ''}` : ''}"><td class="n">${iconHtml(t)}${name}</td><td><i class="dot ${st.cls}" style="display:inline-block"></i> ${escH(st.text)}</td>
@@ -1424,7 +1424,7 @@ function msgHtml(e, fresh) {
   return `<div class="${cls}">${avatar(e.source)}<div><div class="hd"><b>${escH(e.source)}</b>${p && game.enabled ? `<small>Lvl ${p.level}</small>` : ''}<time>${hhmm(e.ts)}</time></div>
     <p>${escH(e.icon || '')} ${escH(e.text)}</p></div>${e.xp && game.enabled ? `<em class="xp">+${e.xp} XP</em>` : '<span></span>'}</div>`;
 }
-const EMPTY_FEED = '<div class="empty">Noch nichts passiert. Sobald deine Apps etwas tun, steht es hier.</div>';
+const EMPTY_FEED = '<div class="empty">Nothing has happened yet. As soon as your apps do something, it shows up here.</div>';
 function feedInit(events) {
   const list = events.slice(-60);
   $('chat').innerHTML = list.length ? list.reverse().map((e) => msgHtml(e, false)).join('') : EMPTY_FEED;
@@ -1460,14 +1460,14 @@ function renderGame() {
   if (!game.enabled || tab !== 'team') return;
   const c = game.today.counts || {};
   const top = Object.entries(KIND_ICONS).filter(([k]) => c[k]).map(([k, i]) => `<span>${i} <b>${c[k]}</b></span>`).join('');
-  $('team').innerHTML = `<div class="team-top"><span>Heute: <b>${game.today.xp} XP</b></span>${top}<span>🛡️ <b>${game.clean_days}</b> ${game.clean_days === 1 ? 'Tag' : 'Tage'} ohne Fehler</span></div>`
+  $('team').innerHTML = `<div class="team-top"><span>Today: <b>${game.today.xp} XP</b></span>${top}<span>🛡️ <b>${game.clean_days}</b> ${game.clean_days === 1 ? 'day' : 'days'} without errors</span></div>`
     + (game.players.length ? game.players.map((p, i) => {
       const span = Math.max(1, p.next - p.base), pct = Math.min(100, (p.xp - p.base) / span * 100);
       const today = Object.entries(p.today.counts || {}).filter(([k]) => KIND_ICONS[k]).map(([k, v]) => `${KIND_ICONS[k]} ${v}`).join(' · ');
       return `<div class="player"><span class="rank">${['🥇', '🥈', '🥉'][i] || i + 1}</span>${avatar(p.name)}<div><div class="nm">${escH(p.name)}<small>Level ${p.level} · ${p.xp} XP</small></div>
-        <div class="xpbar" title="${p.xp - p.base} von ${span} XP bis Level ${p.level + 1}"><i style="width:${pct.toFixed(0)}%"></i></div>${today ? `<div class="today">heute ${today}</div>` : ''}</div>
+        <div class="xpbar" title="${p.xp - p.base} of ${span} XP to level ${p.level + 1}"><i style="width:${pct.toFixed(0)}%"></i></div>${today ? `<div class="today">today ${today}</div>` : ''}</div>
         <span class="bd">${p.badges.map((b) => `<span data-tip="${escH(b.name)}: ${escH(b.about)}">${b.emoji}</span>`).join('')}</span></div>`;
-    }).join('') : '<div class="empty">Noch keine Punkte. Jede erledigte Aufgabe bringt XP.</div>');
+    }).join('') : '<div class="empty">No points yet. Every job done earns XP.</div>');
 }
 
 // Live data over Server-Sent Events; plain polling while the stream isn't available.

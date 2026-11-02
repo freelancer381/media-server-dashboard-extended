@@ -254,8 +254,8 @@ function render(d) {
   put('overall', d.alerts.length ? `<span data-tip="${esc(allIssues)}" tabindex="0">${pill(errors ? 'error' : 'warning', `${d.alerts.length} ${d.alerts.length === 1 ? 'issue' : 'issues'}`)}</span>` : pill('', 'All good'));
   // Updates: a newer release, one running, or the result of the last one until someone acknowledges it.
   const up = d.update || {}, upLast = up.last || {}, ul = $('updateLink');
-  const RESULT = { succeeded: '✓ Update auf ' + upLast.to + ' installiert', rolled_back: '↩ Update zurückgerollt', failed: '✕ Update fehlgeschlagen', refused: '✕ Update abgelehnt', attention: '⚠ Update braucht Hilfe' };
-  const utext = up.state === 'running' ? '⏳ Update läuft …' : !up.acked && RESULT[upLast.result] ? RESULT[upLast.result] : up.available ? `⬆ Version ${up.available} verfügbar` : '';
+  const RESULT = { succeeded: '✓ Updated to ' + upLast.to, rolled_back: '↩ Update rolled back', failed: '✕ Update failed', refused: '✕ Update refused', attention: '⚠ Update needs attention' };
+  const utext = up.state === 'running' ? '⏳ Updating …' : !up.acked && RESULT[upLast.result] ? RESULT[upLast.result] : up.available ? `⬆ Version ${up.available} available` : '';
   ul.hidden = !utext; ul.textContent = utext;
   put('facts', [
     s.booted && `up ${span((d.now - s.booted) / 1000)}`, net.online === undefined ? '' : net.online ? `internet ${Math.round(net.ping)} ms` : 'offline', net.vpn && 'VPN on',

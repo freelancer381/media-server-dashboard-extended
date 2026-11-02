@@ -1,7 +1,7 @@
-# Installation mit Docker
+# Installing with Docker
 
-Das Image `ghcr.io/lcsfls/media-server-dashboard-extended` enthält nur Python und das Dashboard
-(amd64 und arm64). Jedes Release-Image ist vom Release-Workflow signiert (Sigstore).
+The image `ghcr.io/lcsfls/media-server-dashboard-extended` holds just Python and the dashboard
+(amd64 and arm64). Every release image is signed by the release workflow (Sigstore).
 
 ## Docker Compose
 
@@ -10,17 +10,17 @@ mkdir media-dashboard && cd media-dashboard
 curl -fsSLO https://raw.githubusercontent.com/lcsfls/media-server-dashboard-extended/main/docker-compose.yml
 mkdir data && sudo chown 1000:1000 data
 docker compose up -d
-docker compose logs dashboard     # zeigt den Setup-Token
+docker compose logs dashboard     # shows the setup token
 ```
 
-Dann `http://<host>:8900/setup` öffnen und den Token eingeben.
+Then open `http://<host>:8900/setup` and enter the token.
 
-Die `docker-compose.yml`:
+The `docker-compose.yml`:
 
 ```yaml
 services:
   dashboard:
-    image: ghcr.io/lcsfls/media-server-dashboard-extended:latest   # oder eine feste Version, z. B. :0.2
+    image: ghcr.io/lcsfls/media-server-dashboard-extended:latest   # or a fixed version, e.g. :0.2
     container_name: media-server-dashboard
     restart: unless-stopped
     ports:
@@ -29,10 +29,10 @@ services:
       - ./data:/data
     environment:
       TZ: Europe/Berlin
-      # MSD_TRUSTED_PROXIES: "172.18.0.1"   # nur hinter einem Reverse Proxy, siehe unten
+      # MSD_TRUSTED_PROXIES: "172.18.0.1"   # only behind a reverse proxy, see below
 ```
 
-Ohne Compose:
+Without Compose:
 
 ```bash
 docker run -d --name media-server-dashboard --restart unless-stopped \
@@ -40,42 +40,45 @@ docker run -d --name media-server-dashboard --restart unless-stopped \
   ghcr.io/lcsfls/media-server-dashboard-extended:latest
 ```
 
-## Einstellungen über Umgebungsvariablen
+## Settings through environment variables
 
-| Variable | Standard | Bedeutung |
+| Variable | Default | Meaning |
 |---|---|---|
-| `MSD_PORT` | `8900` | Port im Container |
-| `MSD_TRUSTED_PROXIES` | leer | Komma-Liste der Reverse-Proxy-Adressen, wie der Container sie sieht |
-| `MSD_UPDATE_REPO` | `lcsfls/media-server-dashboard-extended` | Wo nach neuen Releases geschaut wird (nur Hinweis) |
-| `TZ` | UTC | Zeitzone für Feed und Tageszahlen |
+| `MSD_PORT` | `8900` | port inside the container |
+| `MSD_TRUSTED_PROXIES` | empty | comma-separated addresses of your reverse proxy, as the container sees them |
+| `MSD_UPDATE_REPO` | `lcsfls/media-server-dashboard-extended` | where to look for new releases (a notice only) |
+| `TZ` | UTC | time zone for the feed and today's numbers |
 
-Alles andere stellst du im Wizard ein; es landet in `/data/config.json`.
+Everything else is set in the wizard and stored in `/data/config.json`.
 
-## Netzwerk
+## Network
 
-- Die Apps trägst du im Wizard mit ihrer LAN-Adresse ein (`http://192.168.1.21:7878`). Laufen sie im selben Compose-Projekt, geht auch der Dienstname (`http://radarr:7878`).
-- Für **Webhooks** müssen die Apps das Dashboard erreichen: `http://<docker-host>:8900/hook/…`. Die fertigen Adressen stehen unter Settings → Live-Feed.
-- Proxmox (optional): URL `https://<proxmox-ip>:8006` und ein Token mit `PVEAuditor` (siehe [proxmox.md](proxmox.md#den-api-token-von-hand-anlegen)). Ohne eigene CA-Datei die Zertifikatsprüfung im Wizard ausschalten oder `pve-root-ca.pem` nach `/data` legen und den Pfad `/data/pve-root-ca.pem` eintragen.
+- Enter the apps in the wizard with their LAN address (`http://192.168.1.21:7878`). If they run in the same Compose project, the service name works too (`http://radarr:7878`).
+- For **webhooks** the apps must reach the dashboard: `http://<docker-host>:8900/hook/…`. The ready-made addresses are under Settings → Live feed.
+- Proxmox (optional): URL `https://<proxmox-ip>:8006` and a token with `PVEAuditor` (see [proxmox.md](proxmox.md#creating-the-api-token-by-hand)). Without a CA file, switch off certificate checking in the wizard, or put `pve-root-ca.pem` into `/data` and enter `/data/pve-root-ca.pem`.
 
-## Hinter einem Reverse Proxy (HTTPS)
+## Behind a reverse proxy (HTTPS)
 
-Nginx Proxy Manager, Traefik, Caddy oder Synology: einfach auf `http://<host>:8900` weiterleiten.
+Nginx Proxy Manager, Traefik, Caddy or Synology: just forward to `http://<host>:8900`.
 
-- **Wichtig für den Live-Feed:** Der Proxy darf Server-Sent Events (`/api/stream`) nicht puffern. Nginx hält sich an den Header `X-Accel-Buffering: no`, den das Dashboard schickt; bei Traefik und Caddy ist nichts zu tun.
-- Setze `MSD_TRUSTED_PROXIES` auf die Adresse, von der der Proxy kommt (bei Port-Mapping meist das Gateway des Docker-Netzes, z. B. `172.18.0.1`; `docker network inspect <netz>` zeigt es). Dann sperrt der Login-Schutz den echten Besucher statt des Proxys, und der Login-Cookie wird bei HTTPS als `Secure` markiert.
+- **Important for the live feed:** the proxy must not buffer Server-Sent Events (`/api/stream`). Nginx honours the `X-Accel-Buffering: no` header the dashboard sends; Traefik and Caddy need nothing.
+- Set `MSD_TRUSTED_PROXIES` to the address the proxy connects from (with port mapping usually the gateway of the Docker network, e.g. `172.18.0.1`; `docker network inspect <network>` shows it). Then the login lockout hits the real visitor instead of the proxy, and the login cookie is marked `Secure` over HTTPS.
 
 ## Updates
 
-In Settings → Updates zeigt das Dashboard, wenn eine neue Version erschienen ist. Aktualisieren:
+Settings → Updates says when a new version is out. To update:
 
 ```bash
 docker compose pull && docker compose up -d
 ```
 
-Einstellungen, Feed und Punkte bleiben in `./data`. Wer Updates automatisieren will, kann z. B.
-Watchtower verwenden; eine feste Version (`:0.2`) bekommt nur Fehlerbehebungen dieser Reihe.
+Settings, feed and points stay in `./data`. To automate updates you can use e.g. Watchtower; a fixed
+version tag (`:0.2`) only gets fixes of that series.
 
-Image-Signatur prüfen:
+Pulling the image needs access to `ghcr.io` and `pkg-containers.githubusercontent.com`; `cosign verify`
+also needs `tuf-repo-cdn.sigstore.dev`.
+
+Checking the image signature:
 
 ```bash
 cosign verify ghcr.io/lcsfls/media-server-dashboard-extended:0.2.0 \
@@ -83,20 +86,17 @@ cosign verify ghcr.io/lcsfls/media-server-dashboard-extended:0.2.0 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
-Zum Laden des Images braucht der Docker-Host Zugriff auf `ghcr.io` und `pkg-containers.githubusercontent.com`;
-für `cosign verify` zusätzlich auf `tuf-repo-cdn.sigstore.dev`.
-
-## Selbst bauen
+## Building it yourself
 
 ```bash
 git clone https://github.com/lcsfls/media-server-dashboard-extended.git && cd media-server-dashboard-extended
 docker build --build-arg VERSION="$(cat VERSION)" -t media-server-dashboard .
 ```
 
-In der `docker-compose.yml` dann `image:` durch `build: .` ersetzen.
+Then replace `image:` with `build: .` in `docker-compose.yml`.
 
-## Probleme
+## Troubleshooting
 
-- **`Permission denied` beim Start:** Der Container läuft als uid 1000; der Ordner `data` muss ihm gehören (`sudo chown 1000:1000 data`) oder du setzt `user: "<uid>:<gid>"` auf einen Benutzer, dem der Ordner gehört.
-- **Setup-Token verloren:** steht in `data/setup-token.txt` und im Log (`docker compose logs dashboard`).
-- **Passwort vergessen:** Container stoppen, in `data/config.json` den Block `"auth"` löschen, starten: Der Wizard öffnet sich wieder mit neuem Setup-Token, alle anderen Einstellungen bleiben.
+- **`Permission denied` on start:** the container runs as uid 1000; the `data` folder must belong to it (`sudo chown 1000:1000 data`), or set `user: "<uid>:<gid>"` to a user that owns the folder.
+- **Lost the setup token:** it is in `data/setup-token.txt` and in the log (`docker compose logs dashboard`).
+- **Forgot the password:** stop the container, remove the `"auth"` block from `data/config.json`, start it: the wizard opens again with a new setup token, all other settings stay.

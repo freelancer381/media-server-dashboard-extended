@@ -1,69 +1,71 @@
 # Media Server Dashboard · Extended
 
-Ein Dashboard für das Homelab mit Medien-Stack (Radarr, Sonarr, Prowlarr, Bazarr, SABnzbd und weitere)
-und ein 3D-Büro, in dem deine Apps die Angestellten sind. Diese Fassung läuft auf **Proxmox (LXC)**,
-in **Docker** und auf der **Synology** und beobachtet alles über das Netzwerk.
+A dashboard for a homelab media stack (Radarr, Sonarr, Prowlarr, Bazarr, SABnzbd and more) plus a 3D
+office where your apps are the employees. This edition runs on **Proxmox (LXC)**, in **Docker** and on
+a **Synology**, and watches everything over the network.
 
-> **Credits:** Dieses Projekt basiert auf dem
-> [Media Server Dashboard](https://github.com/Essq1337/media-server-dashboard) von
-> **[Essq1337](https://github.com/Essq1337)**. Von dort stammen die Idee, das Dashboard und das
-> komplette 3D-Büro mit seinen Mitarbeitern. Vielen Dank! Das Original ist MIT-lizenziert und für
-> einen Mac gebaut; diese Fassung bringt es auf Proxmox, Docker und Synology und erweitert es
-> (siehe unten). Der ursprüngliche Copyright-Hinweis steht weiter in [LICENSE](LICENSE).
+> **Credits:** This project is based on
+> [Media Server Dashboard](https://github.com/Essq1337/media-server-dashboard) by
+> **[Essq1337](https://github.com/Essq1337)**. The idea, the dashboard and the whole 3D office with its
+> staff come from there. Thank you! The original is MIT-licensed and built for a Mac; this edition
+> brings it to Proxmox, Docker and Synology and extends it (see below). The original copyright notice
+> remains in [LICENSE](LICENSE).
 
-## Was es kann
+## Features
 
-- **Dashboard** (`/`): CPU, RAM, Netzwerk und Downloads als Live-Graphen, welche Dienste laufen (Mauszeiger drauf zeigt, was fehlt), SABnzbd-Warteschlange, Speicherplatz, zuletzt hinzugefügte Filme und Serien, was in den nächsten 14 Tagen kommt.
-- **Büro** (`/office`): Die Apps sitzen am Schreibtisch, wenn sie arbeiten, und gehen in den Pausenraum, wenn nichts zu tun ist. Eigene Apps kommen als weitere Mitarbeiter dazu.
-- **Live-Feed** im Büro: Was die Apps tun, erscheint als Chat und als Sprechblase über dem Kopf des Mitarbeiters („Radarr: hat Dune (2021) in Bluray-2160p importiert“). Quellen sind Webhooks der Apps und das, was das Dashboard selbst bemerkt. Alles kommt live über Server-Sent Events.
-- **Team-Tafel (Gamification):** XP, Level und Abzeichen pro Mitarbeiter, Tageszahlen, eine Rangliste und die Tage ohne Fehler. Abschaltbar.
-- **Startseite** neben dem Büro (links oder rechts, Kacheln oder Tabelle): eigene Links mit Icons, Online-Check per IP:Port und für verknüpfte Proxmox-Gäste CPU, RAM, Traffic und Uptime.
-- **Proxmox:** Host-Werte, Storages und der Status der Container/VMs über die Proxmox-API mit einem Token, der nur lesen darf.
-- **Setup-Wizard** (`/setup`, später ⚙ Settings): Benutzer, Adresse (IP oder Domain mit HTTPS), Proxmox, Apps mit Verbindungstest, eigene Apps mit Vorlagen (Lidarr, Readarr, Whisparr, Jellyseerr, Jellyfin, Plex, Tautulli, qBittorrent), Startseite, Live-Feed und Updates.
-- **Updates per Klick** (LXC): nur Releases, die der Release-Workflow dieses Repos signiert hat, mit Sicherung, Gesundheitscheck und automatischem Zurückrollen. Docker und Synology aktualisieren über das signierte Image.
+- **Dashboard** (`/`): live graphs for CPU, memory, network and downloads, which services are up (hover one to see what's wrong), the SABnzbd queue, storage, recently added movies and shows, and what's coming up in the next 14 days.
+- **Office** (`/office`): the apps sit at their desks while they're working and wander off to the break room when they're idle. Custom apps join as extra staff.
+- **Live feed** in the office: what the apps do shows up as a chat and as a speech bubble above the worker ("Radarr: imported Dune (2021) in Bluray-2160p"). It comes from the apps' webhooks and from what the dashboard notices itself, pushed live over Server-Sent Events.
+- **Team board (gamification):** XP, levels and badges for every worker, today's numbers, a leaderboard and the days without errors. Can be switched off.
+- **Start page** beside the office (left or right, tiles or a table): your own links with icons, online checks by IP:port and, for linked Proxmox guests, CPU, memory, traffic and uptime.
+- **Proxmox:** host stats, storages and the state of containers and VMs through the Proxmox API, with a read-only token.
+- **Setup wizard** (`/setup`, later ⚙ Settings): user, address (IP or a domain with HTTPS), Proxmox, apps with connection tests, custom apps with presets (Lidarr, Readarr, Whisparr, Jellyseerr, Jellyfin, Plex, Tautulli, qBittorrent), start page, live feed and updates.
+- **One-click updates** (LXC): only releases signed by this repository's release workflow are installed, with a backup, a health check and an automatic rollback. Docker and Synology update through the signed image.
 
-Python-Standardbibliothek, kein Build, keine Accounts, keine Analytics.
+Python standard library only, no build step, no accounts, no analytics.
 
 ## Installation
 
-| Wo | Anleitung | Updates |
+| Where | Guide | Updates |
 |---|---|---|
-| **Proxmox VE** (eigener LXC, empfohlen) | [docs/proxmox.md](docs/proxmox.md): ein Skript auf dem Host, Laufwerk und Ressourcen per Auswahl | Settings → Updates (ein Klick, signiert) |
+| **Proxmox VE** (own LXC, recommended) | [docs/proxmox.md](docs/proxmox.md): one script on the host, pick storage and resources from menus | Settings → Updates (one click, signed) |
 | **Docker / Docker Compose** | [docs/docker.md](docs/docker.md) | `docker compose pull && docker compose up -d` |
-| **Synology** (Container Manager) | [docs/synology.md](docs/synology.md) | Projekt neu erstellen bzw. Image aktualisieren |
+| **Synology** (Container Manager) | [docs/synology.md](docs/synology.md) | rebuild the project or update the image |
 
-Danach `http://<adresse>/setup` öffnen, den **Setup-Token** eingeben (der Installer zeigt ihn an, bei Docker steht er im Log) und den Wizard durchgehen.
+Then open `http://<address>/setup`, enter the **setup token** (the installer prints it; with Docker it is
+in the log) and go through the wizard.
 
-Nur ausprobieren, mit erfundenen Daten:
+To just try it with made-up data:
 
 ```bash
 python3 server.py --demo
 ```
 
-Dann http://localhost:8900 öffnen.
+Then open http://localhost:8900.
 
-## Live-Feed und Webhooks
+## Live feed and webhooks
 
-Ohne weitere Einrichtung meldet das Dashboard, was es beim Abfragen sieht: fertige Downloads, neue Importe,
-Suchen, Probleme und Container, die stoppen. Mit Webhooks kommt alles sofort und vollständig an.
-Die Adressen samt Anleitung pro App stehen unter **Settings → Live-Feed**, zum Kopieren:
+Without any setup the dashboard reports what it sees while polling: finished downloads, new imports,
+searches, problems and guests that stop. With webhooks everything arrives at once and in full. The
+addresses, with instructions per app, are under **Settings → Live feed**, ready to copy:
 
 - **Radarr, Sonarr, Prowlarr, Lidarr, Readarr:** Settings → Connect → Webhook, URL `…/hook/<token>/Radarr`
-- **Bazarr, SABnzbd:** Benachrichtigung über Apprise mit `json://…/hook/<token>/Bazarr`
-- **Jellyfin:** Webhook-Plugin, Generic Destination (Vorlage in den Settings)
-- **Eigene Skripte:** `curl -X POST …/hook/<token>/Backup -H 'Content-Type: application/json' -d '{"text": "Backup fertig"}'`
+- **Bazarr, SABnzbd:** notifications through Apprise with `json://…/hook/<token>/Bazarr`
+- **Jellyfin:** Webhook plugin, generic destination (template in the settings)
+- **Your own scripts:** `curl -X POST …/hook/<token>/Backup -H 'Content-Type: application/json' -d '{"text": "Backup done"}'`
 
-## Updates und Releases
+## Updates and releases
 
-Die Pipeline übernimmt die Ideen von [garnet-ops](https://github.com/lcsfls/garnet-ops):
+The pipeline follows the ideas of [garnet-ops](https://github.com/lcsfls/garnet-ops):
 
-1. `scripts/release.sh 0.3.0` setzt `VERSION`, macht aus „Unreleased“ im [CHANGELOG](CHANGELOG.md) den Abschnitt des Releases, committet und taggt.
-2. `git push origin main v0.3.0` startet [`.github/workflows/release.yml`](.github/workflows/release.yml). Der Workflow lässt die ganze CI laufen (Debian 12 und 13), baut das Archiv und `release.json` mit SHA-256 und der [Release-Policy](.release-policy.json) und **signiert `release.json` keyless per Sigstore** mit seiner eigenen Identität. Dann baut er das Container-Image für amd64 und arm64, testet und signiert es und veröffentlicht erst danach das GitHub-Release.
-3. In jeder LXC-Installation prüft der Update-Dienst (root, `updater/msd-updater.py`) täglich und auf Knopfdruck die Releases. Installiert wird nur, wenn die Signatur von **genau diesem Workflow an genau diesem Tag** stammt, die Version neuer ist und die Policy passt. Ablauf: Sicherung der Einstellungen, Entpacken neben der laufenden Version, Umschalten, Neustart, Gesundheitscheck. Antwortet die neue Version nicht, läuft automatisch wieder die alte.
+1. `scripts/release.sh 0.3.0` sets `VERSION`, turns "Unreleased" in the [CHANGELOG](CHANGELOG.md) into the release's section, commits and tags.
+2. `git push origin main v0.3.0` starts [`.github/workflows/release.yml`](.github/workflows/release.yml). It runs the whole CI (Debian 12 and 13), builds the archive and `release.json` with its SHA-256 and the [release policy](.release-policy.json), and **signs `release.json` keyless with Sigstore** under its own identity. Then it builds the container image for amd64 and arm64, tests, signs and verifies it, and only then publishes the GitHub release.
+3. On every LXC installation the update service (root, `updater/msd-updater.py`) looks for releases daily and on request. It installs only if the signature comes from **exactly this workflow at exactly this tag**, the version is newer and the policy allows it. It backs up the settings, unpacks next to the running version, switches over, restarts and runs a health check. If the new version doesn't answer, the previous one runs again.
 
-Die App selbst kann nichts installieren: Sie legt nur eine Anfrage ab, die der Update-Dienst prüft. Für die Installation braucht es das Passwort; automatische Installation zu einer festen Uhrzeit lässt sich einschalten.
+The app itself can't install anything: it only leaves a request that the update service checks.
+Installing needs the password; automatic installation at a set hour can be switched on.
 
-Ein Image von Hand prüfen:
+To check an image by hand:
 
 ```bash
 cosign verify ghcr.io/lcsfls/media-server-dashboard-extended:0.2.0 \
@@ -71,24 +73,24 @@ cosign verify ghcr.io/lcsfls/media-server-dashboard-extended:0.2.0 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
-## Sicherheit
+## Security
 
-- Jeder meldet sich an (Benutzer und Passwort, PBKDF2). Vor dem ersten Setup öffnet sich der Wizard nur mit dem Setup-Token.
-- API-Keys und der Proxmox-Token liegen nur auf dem Server (`config.json`, Modus 600) und gehen nie an den Browser.
-- Für Proxmox reicht die Rolle `PVEAuditor` (nur lesen). Das Dashboard ändert nichts an Host oder Apps.
-- Webhooks brauchen den geheimen Token in der URL, sind auf 120 pro Minute begrenzt und dürfen nur JSON schicken. Eine neue Adresse gibt es in den Settings.
-- Nach acht Fehlversuchen beim Login wird die echte Client-IP für fünf Minuten gesperrt, auch hinter einem Reverse Proxy (`trusted_proxies` bzw. `MSD_TRUSTED_PROXIES`).
-- Nicht ohne HTTPS ins Internet stellen.
+- Everyone signs in (user and password, PBKDF2). Before the first setup, the wizard only opens with the setup token.
+- API keys and the Proxmox token stay on the server (`config.json`, mode 600) and never reach the browser.
+- For Proxmox the `PVEAuditor` role (read-only) is enough. The dashboard never changes anything on the host or in the apps.
+- Webhooks need the secret token in the URL, are limited to 120 a minute and only take JSON. A new address is one checkbox in the settings.
+- After eight wrong logins the real client address is locked out for five minutes, also behind a reverse proxy (`trusted_proxies` or `MSD_TRUSTED_PROXIES`).
+- Don't expose it to the internet without HTTPS.
 
-## Entwicklung
+## Development
 
 ```bash
-python3 -m unittest discover -s tests   # Unit-Tests (Live-Feed, Server, Updater gegen ein nachgebautes GitHub)
-python3 tests/smoke.py                  # startet den Server und geht Setup, Login, Webhooks, SSE und Updates durch
-python3 server.py --demo                # Demo mit erfundenen Daten und Live-Feed
+python3 -m unittest discover -s tests   # unit tests (live feed, server, updater against a fake GitHub)
+python3 tests/smoke.py                  # starts the server and goes through setup, login, webhooks, SSE and updates
+python3 server.py --demo                # demo with made-up data and a live feed
 ```
 
-## Lizenz
+## License
 
-MIT, siehe [LICENSE](LICENSE). Basiert auf [Essq1337/media-server-dashboard](https://github.com/Essq1337/media-server-dashboard) (MIT).
-Das 3D-Büro nutzt [three.js](https://threejs.org) (MIT), mitgeliefert in `vendor/`.
+MIT, see [LICENSE](LICENSE). Based on [Essq1337/media-server-dashboard](https://github.com/Essq1337/media-server-dashboard) (MIT).
+The 3D office uses [three.js](https://threejs.org) (MIT), bundled in `vendor/`.

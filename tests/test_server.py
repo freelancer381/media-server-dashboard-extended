@@ -28,16 +28,16 @@ class BuildConfig(unittest.TestCase):
 
     def test_validation(self):
         for bad, msg in [
-            (wizard(user="a b"), "Benutzername"),
-            (wizard(password="short"), "10 Zeichen"),
-            (wizard(domain="not a domain"), "Domain"),
+            (wizard(user="a b"), "User name"),
+            (wizard(password="short"), "10 characters"),
+            (wizard(domain="not a domain"), "domain"),
             (wizard(apps={"radarr": {"enabled": True, "url": "ftp://x", "api_key": "k"}}), "URL"),
-            (wizard(apps={"radarr": {"enabled": True, "url": "http://x:7878"}}), "API-Key"),
-            (wizard(custom_apps=[{"name": "Radarr", "url": "http://x"}]), "doppelt"),
-            (wizard(home={"enabled": True, "tiles": [{"name": "X"}]}), "URL oder IP:Port"),
+            (wizard(apps={"radarr": {"enabled": True, "url": "http://x:7878"}}), "API key"),
+            (wizard(custom_apps=[{"name": "Radarr", "url": "http://x"}]), "used twice"),
+            (wizard(home={"enabled": True, "tiles": [{"name": "X"}]}), "URL or IP:port"),
             (wizard(home={"enabled": True, "tiles": [{"name": "X", "url": "javascript:alert(1)"}]}), "URL"),
-            (wizard(home={"enabled": True, "tiles": [{"name": "X", "check": "a b:1"}]}), "IP:Port"),
-            (wizard(home={"enabled": True, "tiles": [{"name": "X", "check": "h:1", "icon": "data:text/html;base64,AAAA"}]}), "Icon"),
+            (wizard(home={"enabled": True, "tiles": [{"name": "X", "check": "a b:1"}]}), "IP:port"),
+            (wizard(home={"enabled": True, "tiles": [{"name": "X", "check": "h:1", "icon": "data:text/html;base64,AAAA"}]}), "icon"),
         ]:
             with self.subTest(msg=msg):
                 with self.assertRaisesRegex(ValueError, msg):

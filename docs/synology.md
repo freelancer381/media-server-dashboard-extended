@@ -1,32 +1,32 @@
-# Installation auf einer Synology (Container Manager)
+# Installing on a Synology (Container Manager)
 
-Getestet für DSM 7.2 mit dem Paket **Container Manager**. Das Image gibt es für Intel/AMD (amd64) und
-ARM64-Modelle.
+Written for DSM 7.2 with the **Container Manager** package. The image is available for Intel/AMD
+(amd64) and ARM64 models.
 
-## 1. Ordner anlegen
+## 1. Create the folder
 
-In der **File Station** unter `docker` (der Freigabe, die Container Manager anlegt) den Ordner
-`media-dashboard` und darin `data` anlegen:
+In **File Station**, under `docker` (the shared folder Container Manager creates), create the folder
+`media-dashboard` and inside it `data`:
 
 ```
 /volume1/docker/media-dashboard/data
 ```
 
-## 2. Rechte für den Container
+## 2. Permissions for the container
 
-Der Container schreibt in `data` als Benutzer mit uid 1000. Zwei Möglichkeiten:
+The container writes to `data` as a user with uid 1000. Two ways:
 
-- **Einfach (eigener Benutzer):** Per SSH `id` eingeben und uid/gid notieren (z. B. `uid=1026(luis) gid=100(users)`).
-  In der Compose-Datei unten dann `user: "1026:100"` eintragen. Dein Benutzer hat ja schon Rechte auf den Ordner.
-- **Oder** per SSH dem uid 1000 den Ordner geben: `sudo chown -R 1000:1000 /volume1/docker/media-dashboard/data`
+- **Simple (your own user):** over SSH run `id` and note uid/gid (e.g. `uid=1026(alex) gid=100(users)`).
+  Put `user: "1026:100"` into the Compose file below. Your user already has access to the folder.
+- **Or** give the folder to uid 1000 over SSH: `sudo chown -R 1000:1000 /volume1/docker/media-dashboard/data`
 
-## 3. Projekt anlegen
+## 3. Create the project
 
-**Container Manager → Projekt → Erstellen**
+**Container Manager → Project → Create**
 
-- Projektname: `media-dashboard`
-- Pfad: `/docker/media-dashboard`
-- Quelle: *docker-compose.yml erstellen* und einfügen:
+- Project name: `media-dashboard`
+- Path: `/docker/media-dashboard`
+- Source: *Create docker-compose.yml* and paste:
 
 ```yaml
 services:
@@ -34,68 +34,67 @@ services:
     image: ghcr.io/lcsfls/media-server-dashboard-extended:latest
     container_name: media-server-dashboard
     restart: unless-stopped
-    user: "1026:100"            # deine uid:gid aus Schritt 2 (oder die Zeile weglassen, wenn du chown 1000 gemacht hast)
+    user: "1026:100"            # your uid:gid from step 2 (or drop the line if you ran chown 1000)
     ports:
       - "8900:8900"
     volumes:
       - /volume1/docker/media-dashboard/data:/data
     environment:
       TZ: Europe/Berlin
-      # MSD_TRUSTED_PROXIES: "172.20.0.1"   # erst nach Schritt 6
+      # MSD_TRUSTED_PROXIES: "172.20.0.1"   # only after step 6
 ```
 
-*Weiter* → (Web Station-Portal nicht nötig) → *Fertig*. Der Container startet.
+*Next* → (the Web Station portal isn't needed) → *Done*. The container starts.
 
-## 4. Setup-Token und Wizard
+## 4. Setup token and wizard
 
-**Container Manager → Container → media-server-dashboard → Details → Protokoll**: dort steht
+**Container Manager → Container → media-server-dashboard → Details → Log** shows
 
 ```
 Setup not finished: open /setup and enter the setup token: 1a2b3c4d-5e6f7a8b
 ```
 
-(Der Token liegt auch in `data/setup-token.txt`.) Dann `http://<nas-ip>:8900/setup` öffnen und den
-Wizard durchgehen. Die Apps trägst du mit ihren LAN-Adressen ein; laufen sie auf derselben Synology,
-mit der NAS-IP und ihrem Port (`http://192.168.1.10:7878`).
+(The token is also in `data/setup-token.txt`.) Open `http://<nas-ip>:8900/setup` and go through the
+wizard. Enter the apps with their LAN addresses; if they run on the same Synology, use the NAS IP and
+their port (`http://192.168.1.10:7878`).
 
 ## 5. Webhooks
 
-Unter **Settings → Live-Feed** stehen die Webhook-Adressen; als Adresse `http://<nas-ip>:8900`
-auswählen, damit die Apps sie erreichen. Für Bazarr und SABnzbd wird daraus automatisch eine
-`json://`-Adresse für Apprise.
+**Settings → Live feed** lists the webhook addresses; pick `http://<nas-ip>:8900` as the address so the
+apps can reach it. For Bazarr and SABnzbd it turns into a `json://` address for Apprise automatically.
 
-## 6. HTTPS über den Synology-Reverse-Proxy (optional)
+## 6. HTTPS through the Synology reverse proxy (optional)
 
-**Systemsteuerung → Anmeldeportal → Erweitert → Reverse Proxy → Erstellen**
+**Control Panel → Login Portal → Advanced → Reverse Proxy → Create**
 
-- Quelle: `HTTPS`, Hostname `dashboard.example.com`, Port `443`
-- Ziel: `HTTP`, `localhost`, Port `8900`
-- Zertifikat: unter **Systemsteuerung → Sicherheit → Zertifikat** der Domain zuordnen (Let's Encrypt)
+- Source: `HTTPS`, hostname `dashboard.example.com`, port `443`
+- Destination: `HTTP`, `localhost`, port `8900`
+- Certificate: assign it under **Control Panel → Security → Certificate** (Let's Encrypt)
 
-Der Live-Feed funktioniert hinter dem Synology-Proxy ohne Zusatz-Header: Das Dashboard schaltet die
-Pufferung von nginx selbst ab (`X-Accel-Buffering: no`).
+The live feed works behind the Synology proxy without extra headers: the dashboard switches nginx's
+buffering off itself (`X-Accel-Buffering: no`).
 
-Damit die Login-Sperre den echten Besucher trifft und der Cookie als `Secure` markiert wird, trägst du die
-Adresse ein, von der der Proxy beim Container ankommt: **Container Manager → Netzwerk →**
-`media-dashboard_default` → *Gateway* (z. B. `172.20.0.1`). Diese Adresse in der Compose-Datei bei
-`MSD_TRUSTED_PROXIES` eintragen und das Projekt neu erstellen.
+So that the login lockout hits the real visitor and the cookie is marked `Secure`, enter the address
+the proxy reaches the container from: **Container Manager → Network →** `media-dashboard_default` →
+*Gateway* (e.g. `172.20.0.1`). Put it into `MSD_TRUSTED_PROXIES` in the Compose file and rebuild the
+project.
 
 ## Updates
 
-Wenn das Dashboard in **Settings → Updates** eine neue Version meldet:
+When **Settings → Updates** reports a new version:
 
-**Container Manager → Projekt → media-dashboard → Aktion → Stoppen**, dann
-**Image → ghcr.io/lcsfls/media-server-dashboard-extended → Aktualisieren** (bzw. „Update verfügbar“),
-dann das Projekt wieder **Starten**. Oder per SSH im Projektordner:
+**Container Manager → Project → media-dashboard → Action → Stop**, then
+**Image → ghcr.io/lcsfls/media-server-dashboard-extended → Update** (or "Update available"),
+then **Start** the project again. Or over SSH in the project folder:
 
 ```bash
 sudo docker compose pull && sudo docker compose up -d
 ```
 
-Deine Einstellungen, der Feed und die Punkte bleiben in `data`.
+Your settings, the feed and the points stay in `data`.
 
-## Probleme
+## Troubleshooting
 
-- **Container startet nicht, „Permission denied“:** Schritt 2 prüfen (uid/gid in `user:` oder `chown`).
-- **„Nicht erreichbar“ bei allen Apps:** Die Synology-Firewall erlaubt Verbindungen aus Docker-Netzen evtl. nicht. Regel für `172.16.0.0/12` erlauben.
-- **Live-Feed zeigt „offline“:** Läuft ein zusätzlicher Proxy (z. B. Cloudflare) davor, muss er Server-Sent Events durchlassen. Das Dashboard fällt dann auf Abfragen alle 2 Sekunden zurück und funktioniert weiter.
+- **Container won't start, "Permission denied":** check step 2 (uid/gid in `user:` or `chown`).
+- **"Not reachable" for every app:** the Synology firewall may block connections from Docker networks. Allow `172.16.0.0/12`.
+- **Live feed shows "offline":** if another proxy (e.g. Cloudflare) sits in front, it must pass Server-Sent Events through. The dashboard then falls back to polling every 2 seconds and keeps working.

@@ -13,7 +13,7 @@ class HookParsing(unittest.TestCase):
     def test_radarr_import_and_upgrade(self):
         body = {"eventType": "Download", "instanceName": "Radarr", "movie": {"title": "Dune", "year": 2021},
                 "movieFile": {"quality": "Bluray-2160p"}, "isUpgrade": False}
-        self.assertEqual(live.parse_hook(body), ("Radarr", "import", "hat Dune (2021) in Bluray-2160p importiert", "success"))
+        self.assertEqual(live.parse_hook(body), ("Radarr", "import", "imported Dune (2021) in Bluray-2160p", "success"))
         body["isUpgrade"] = True
         self.assertEqual(live.parse_hook(body)[1], "upgrade")
 
@@ -41,11 +41,11 @@ class HookParsing(unittest.TestCase):
     def test_jellyfin(self):
         s, k, t, _ = live.parse_hook({"NotificationType": "PlaybackStart", "Name": "Pilot", "SeriesName": "Lost", "NotificationUsername": "Alex"})
         self.assertEqual((s, k), ("Jellyfin", "play"))
-        self.assertEqual(t, "Alex schaut Lost – Pilot")
+        self.assertEqual(t, "Alex is watching Lost – Pilot")
 
     def test_generic_and_garbage(self):
-        self.assertEqual(live.parse_hook({"source": "Backup", "text": "fertig", "kind": "download", "level": "success"}),
-                         ("Backup", "download", "fertig", "success"))
+        self.assertEqual(live.parse_hook({"source": "Backup", "text": "done", "kind": "download", "level": "success"}),
+                         ("Backup", "download", "done", "success"))
         with self.assertRaises(ValueError):
             live.parse_hook({"foo": 1})
         with self.assertRaises(ValueError):
@@ -70,8 +70,8 @@ class Game(unittest.TestCase):
 
     def test_xp_level_up_and_badges(self):
         q = self.live.subscribe()
-        self.live.emit("Radarr", "import", "hat X importiert", "success")
-        self.live.emit("Radarr", "import", "hat Y importiert", "success")
+        self.live.emit("Radarr", "import", "imported X", "success")
+        self.live.emit("Radarr", "import", "imported Y", "success")
         names = []
         while not q.empty():
             names.append(q.get_nowait()[0])
@@ -87,15 +87,15 @@ class Game(unittest.TestCase):
     def test_problems_reset_the_streak_and_earn_nothing(self):
         self.live.game["team"]["clean_since"] = time.time() - 10 * 86400
         self.assertEqual(self.live.summary()["clean_days"], 10)
-        ev = self.live.emit("Sonarr", "health", "kaputt", "error")
+        ev = self.live.emit("Sonarr", "health", "broken", "error")
         self.assertEqual(ev["xp"], 0)
         self.assertEqual(self.live.summary()["clean_days"], 0)
 
     def test_saved_and_loaded(self):
-        self.live.emit("Bazarr", "subtitle", "Untertitel", "success")
+        self.live.emit("Bazarr", "subtitle", "Subtitles", "success")
         self.live.flush()
         again = live.Live(self.dir.name)
-        self.assertEqual(again.recent()[-1]["text"], "Untertitel")
+        self.assertEqual(again.recent()[-1]["text"], "Subtitles")
         self.assertEqual(again.summary()["players"][0]["xp"], live.XP["subtitle"])
         self.assertGreater(again.next_id, again.recent()[-1]["id"])
 
@@ -119,7 +119,7 @@ class Game(unittest.TestCase):
     def test_night_owl(self):
         with mock.patch("live.datetime") as dt:
             dt.fromtimestamp.side_effect = lambda ts: __import__("datetime").datetime(2026, 1, 1, 3, 0)
-            self.live.emit("Radarr", "grab", "nachts", "info")
+            self.live.emit("Radarr", "grab", "at night", "info")
         self.assertIn("night_owl", self.live.game["players"]["Radarr"]["badges"])
 
 

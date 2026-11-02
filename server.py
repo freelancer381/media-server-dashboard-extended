@@ -270,7 +270,7 @@ def read_host():
         old = before.get(g.get("vmid"))
         if seen and old and old != g.get("status"):
             kind = "health" if g.get("status") != "running" else "recover"
-            LIVE.emit("Proxmox", kind, f"{'LXC' if g.get('type') == 'lxc' else 'VM'} {g.get('vmid')} ({g.get('name') or '?'}) ist jetzt {g.get('status')}",
+            LIVE.emit("Proxmox", kind, f"{'LXC' if g.get('type') == 'lxc' else 'VM'} {g.get('vmid')} ({g.get('name') or '?'}) is now {g.get('status')}",
                       "warning" if kind == "health" else "success")
     state["proxmox"] = {"ok": True, "guests": sorted(({
         "id": g.get("vmid"), "name": g.get("name"), "type": g.get("type"), "status": g.get("status"),
@@ -454,7 +454,7 @@ def read_arr(kind):
         for r in recent:
             if (r.get("title"), r.get("sub"), r.get("when")) not in old:
                 what = f"{r['title']}" + (f" ({r['year']})" if r.get("year") else "") + (f" {r['sub'].split(' ')[0]}" if r.get("sub") else "")
-                LIVE.emit(a["name"], "import", f"hat {what}" + (f" in {r['quality']}" if r.get("quality") else "") + " importiert", "success")
+                LIVE.emit(a["name"], "import", f"imported {what}" + (f" in {r['quality']}" if r.get("quality") else ""), "success")
     arr_seen[kind] = keys | (old or set())
     state[kind] = {
         "ok": True, "version": slow["status"].get("version"), "library": library, "missing": slow["missing"].get("totalRecords", 0),
@@ -557,7 +557,7 @@ def read_activity():
         act[a["name"]] = jobs[0] if jobs else None
         job = act[a["name"]] or ""
         if "Search" in job and job != state["activity"].get(a["name"]) and not LIVE.hooked(a["name"]):
-            LIVE.emit(a["name"], "search", "sucht: " + re.sub(r"(?<=[a-z])(?=[A-Z])", " ", job), "info")
+            LIVE.emit(a["name"], "search", "searching: " + re.sub(r"(?<=[a-z])(?=[A-Z])", " ", job), "info")
     b = BY_KIND.get("bazarr")
     if b:
         try:
@@ -656,9 +656,9 @@ def read_sab():
                 continue
             name = download_titles.get(i.lower()) or tidy(h.get("name") or sab_seen[i])
             if h.get("status") == "Completed":
-                LIVE.emit(a["name"], "download", f"hat {name} fertig geladen", "success")
+                LIVE.emit(a["name"], "download", f"finished downloading {name}", "success")
             elif h.get("status") == "Failed":
-                LIVE.emit(a["name"], "error", f"Download fehlgeschlagen: {name} ({livemod.clean(h.get('fail_message'), 120)})", "error")
+                LIVE.emit(a["name"], "error", f"download failed: {name} ({livemod.clean(h.get('fail_message'), 120)})", "error")
     sab_seen_set(ids)
     state["sab"] = {
         "ok": True, "version": q.get("version"), "paused": bool(q.get("paused")),
@@ -766,7 +766,7 @@ def watch_alerts():
                 LIVE.emit(a["source"], "error" if a["level"] == "error" else "health", a["message"], a["level"])
         for key, a in alert_seen.items():
             if key not in now:
-                LIVE.emit(a["source"], "recover", "wieder da" if a["message"] in ("Not reachable",) else f"erledigt: {a['message']}", "success")
+                LIVE.emit(a["source"], "recover", "is back" if a["message"] in ("Not reachable",) else f"solved: {a['message']}", "success")
     alert_seen = now
 
 
@@ -879,7 +879,7 @@ def update_loop():
                         and last_auto != day and st.get("state") not in ("running",)):
                     update_request("install", version=avail["version"], requested_by="auto")
                     last_auto = day
-                    LIVE.emit("Dashboard", "info", f"installiert automatisch Version {avail['version']}", "info")
+                    LIVE.emit("Dashboard", "info", f"installs version {avail['version']} automatically", "info")
                 try:
                     m = os.path.getmtime(status_file())
                 except OSError:
@@ -982,7 +982,7 @@ def wizard_test(req):
                 p["token_secret"] = (CONFIG.get("proxmox") or {}).get("token_secret", "")
             for k in ("url", "token_id", "token_secret"):
                 if not p.get(k):
-                    return {"ok": False, "error": f"{k} fehlt"}
+                    return {"ok": False, "error": f"{k} is missing"}
             nodes = [n["node"] for n in pve_get(p, "nodes")]
             node = p.get("node") if p.get("node") in nodes else nodes[0]
             storages = [{"name": s["storage"], "type": s.get("type"), "total": s.get("total", 0), "used": s.get("used", 0)}
@@ -999,7 +999,7 @@ def wizard_test(req):
             if not a.get("api_key"):
                 a["api_key"] = saved.get("api_key", "")
             if not a.get("url"):
-                return {"ok": False, "error": "URL fehlt"}
+                return {"ok": False, "error": "URL is missing"}
             app = make_app(key or "custom", a, BUILTIN.get(key))
             if app["kind"] == "sabnzbd":
                 v = app_get(app, "version").get("version")
@@ -1013,17 +1013,17 @@ def wizard_test(req):
             app_get(app, app["health_path"], raw=True)
             return {"ok": True}
         if what == "hook":
-            LIVE.emit(req.get("source") or "Dashboard", "test", "Test aus den Einstellungen: der Live-Feed funktioniert 👋", "info")
+            LIVE.emit(req.get("source") or "Dashboard", "test", "Test from the settings: the live feed works 👋", "info")
             return {"ok": True}
-        return {"ok": False, "error": "unbekannter Test"}
+        return {"ok": False, "error": "unknown test"}
     except urllib.error.HTTPError as e:
-        hint = {401: "API-Key/Token falsch", 403: "keine Berechtigung", 404: "Pfad nicht gefunden (URL-Basis prüfen)"}.get(e.code, "")
+        hint = {401: "wrong API key or token", 403: "not allowed", 404: "path not found (check the URL base)"}.get(e.code, "")
         return {"ok": False, "error": f"HTTP {e.code} {hint}".strip()}
     except urllib.error.URLError as e:
         reason = e.reason
         if isinstance(reason, ssl.SSLCertVerificationError):
-            return {"ok": False, "error": f"Zertifikat nicht vertrauenswürdig ({reason.verify_message}). CA-Datei angeben oder Prüfung abschalten."}
-        return {"ok": False, "error": f"nicht erreichbar: {reason}"}
+            return {"ok": False, "error": f"certificate not trusted ({reason.verify_message}). Enter a CA file or switch off certificate checking."}
+        return {"ok": False, "error": f"not reachable: {reason}"}
     except FAIL as e:
         return {"ok": False, "error": f"{type(e).__name__}: {e}"[:200]}
 
@@ -1032,7 +1032,7 @@ def clean_url(u):
     u = (u or "").strip().rstrip("/")
     p = urllib.parse.urlparse(u)
     if p.scheme not in ("http", "https") or not p.hostname:
-        raise ValueError(f"Ungültige URL: {u or '(leer)'}")
+        raise ValueError(f"invalid URL: {u or '(empty)'}")
     return u
 
 
@@ -1046,20 +1046,20 @@ def build_config(req):
 
     user = (req.get("user") or "").strip()
     if not re.fullmatch(r"[A-Za-z0-9._@-]{2,64}", user):
-        raise ValueError("Benutzername: 2–64 Zeichen, nur Buchstaben, Ziffern und . _ @ -")
+        raise ValueError("User name: 2–64 characters, only letters, digits and . _ @ -")
     pw = req.get("password") or ""
     if pw:
         if len(pw) < 10:
-            raise ValueError("Passwort: mindestens 10 Zeichen")
+            raise ValueError("Password: at least 10 characters")
         c["auth"] = {"user": user, **hash_password(pw)}
     elif old.get("auth", {}).get("hash"):
         c["auth"] = {**old["auth"], "user": user}
     else:
-        raise ValueError("Bitte ein Passwort setzen")
+        raise ValueError("Please set a password")
 
     domain = (req.get("domain") or "").strip().lower().rstrip(".")
     if domain and not DOMAIN_RE.match(domain):
-        raise ValueError(f"Ungültige Domain: {domain}")
+        raise ValueError(f"invalid domain: {domain}")
     c["domain"] = domain
     c["tls"] = "internal" if req.get("tls") == "internal" else "public"
     c["ip_access"] = bool(req.get("ip_access", True))
@@ -1068,7 +1068,7 @@ def build_config(req):
     if p.get("url"):
         secret = p.get("token_secret") or (old.get("proxmox") or {}).get("token_secret", "")
         if not (p.get("node") and p.get("token_id") and secret):
-            raise ValueError("Proxmox: Node, Token-ID und Secret werden gebraucht")
+            raise ValueError("Proxmox: node, token ID and secret are needed")
         c["proxmox"] = {"url": clean_url(p["url"]), "node": p["node"].strip(), "token_id": p["token_id"].strip(), "token_secret": secret,
                         "verify_tls": bool(p.get("verify_tls", True)), **({"ca_file": p["ca_file"].strip()} if (p.get("ca_file") or "").strip() else {})}
     c["storages"] = [str(s) for s in req.get("storages") or []]
@@ -1081,7 +1081,7 @@ def build_config(req):
             continue
         k = a.get("api_key") or ((old.get("apps") or {}).get(key) or {}).get("api_key", "")
         if not k:
-            raise ValueError(f"{BUILTIN[key]['name']}: API-Key fehlt")
+            raise ValueError(f"{BUILTIN[key]['name']}: API key is missing")
         c["apps"][key] = {"url": clean_url(a.get("url")), "api_key": k, "verify_tls": bool(a.get("verify_tls", True))}
 
     c["custom_apps"] = []
@@ -1089,9 +1089,9 @@ def build_config(req):
     for a in req.get("custom_apps") or []:
         name = (a.get("name") or "").strip()[:40]
         if not name:
-            raise ValueError("Eigene App ohne Namen")
+            raise ValueError("A custom app has no name")
         if name.lower() in seen:
-            raise ValueError(f"Name doppelt: {name}")
+            raise ValueError(f"name used twice: {name}")
         seen.add(name.lower())
         kind = a.get("kind") if a.get("kind") in CUSTOM_KINDS else "generic"
         auth = a.get("auth") if a.get("auth") in AUTH_KINDS else "header"
@@ -1105,7 +1105,7 @@ def build_config(req):
         else:
             entry["health_path"] = "/" + (a.get("health_path") or "/").strip().lstrip("/")
         if kind == "arr" and not entry["api_key"]:
-            raise ValueError(f"{name}: API-Key fehlt")
+            raise ValueError(f"{name}: API key is missing")
         c["custom_apps"].append(entry)
 
     h = req.get("home") or {}
@@ -1113,15 +1113,15 @@ def build_config(req):
     for t in (h.get("tiles") or [])[:60]:
         name = (t.get("name") or "").strip()[:40]
         if not name:
-            raise ValueError("Kachel ohne Namen")
+            raise ValueError("A tile has no name")
         url = (t.get("url") or "").strip()
         check = (t.get("check") or "").strip()
         if url:
             url = clean_url(url)
         if check and not re.fullmatch(r"\[?[A-Za-z0-9.:-]+\]?(:\d{1,5})?", check):
-            raise ValueError(f"{name}: IP:Port ungültig")
+            raise ValueError(f"{name}: invalid IP:port")
         if not url and not check:
-            raise ValueError(f"{name}: URL oder IP:Port angeben")
+            raise ValueError(f"{name}: enter a URL or IP:port")
         tiles.append({"name": name, "url": url, "check": check, "guest": str(t.get("guest") or ""), "icon": clean_icon(t.get("icon"), name)})
     c["home"] = {"enabled": bool(h.get("enabled")), "side": "left" if h.get("side") == "left" else "right",
                  "layout": "table" if h.get("layout") == "table" else "grid", "start": bool(h.get("start")), "tiles": tiles}
@@ -1136,7 +1136,7 @@ def clean_icon(icon, name):
     icon = (icon or "").strip()
     if icon.startswith("data:"):
         if len(icon) > 150_000 or not ICON_RE.match(icon):
-            raise ValueError(f"{name}: Icon zu groß oder kein Bild")
+            raise ValueError(f"{name}: icon too large or not an image")
         return icon
     return icon[:8]
 
@@ -1233,7 +1233,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/setup":
             return self.page("setup.html") if self.authed() or not SETUP_DONE else self.redirect("/login")
         if path == "/setup/config":
-            return self.json(200, public_config()) if self.may_setup() else self.json(401, {"error": "Setup-Token oder Login nötig"})
+            return self.json(200, public_config()) if self.may_setup() else self.json(401, {"error": "setup token or sign-in needed"})
         if not SETUP_DONE and not DEMO:
             return self.redirect("/setup")
         if path == "/login":
@@ -1247,7 +1247,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/stream":
             return self.stream() if self.authed() else self.reply(401, b"Login needed", "text/plain")
         if path == "/api/update":
-            return self.json(200, update_info()) if self.authed() else self.json(401, {"error": "Login nötig"})
+            return self.json(200, update_info()) if self.authed() else self.json(401, {"error": "sign-in needed"})
         if DEMO and path.startswith("/demo-poster/"):
             return self.reply(200, demo.poster(path), "image/svg+xml")
         if path in ("/", "/office"):
@@ -1318,7 +1318,7 @@ class Handler(BaseHTTPRequestHandler):
         while hook_times and now - hook_times[0] > 60:
             hook_times.popleft()
         if len(hook_times) > 120:
-            return self.json(429, {"ok": False, "error": "zu viele Webhooks pro Minute"})
+            return self.json(429, {"ok": False, "error": "too many webhooks per minute"})
         raw = self.body(262144)
         try:
             body = json.loads(raw or b"{}")
@@ -1345,28 +1345,28 @@ class Handler(BaseHTTPRequestHandler):
             return self.hook(path[len("/hook/"):])
         if path.startswith("/api/update/") or path == "/api/game/reset":
             if not self.authed():
-                return self.json(401, {"ok": False, "error": "Login nötig"})
+                return self.json(401, {"ok": False, "error": "sign-in needed"})
             if not self.same_origin_json():
-                return self.json(415, {"ok": False, "error": "JSON erwartet"})
+                return self.json(415, {"ok": False, "error": "JSON expected"})
             try:
                 req = json.loads(self.body() or b"{}")
             except ValueError:
-                return self.json(400, {"ok": False, "error": "Ungültiges JSON"})
+                return self.json(400, {"ok": False, "error": "invalid JSON"})
             return self.json(*self.update_action(path, req))
         if path in ("/setup/test", "/setup/save"):
             # JSON only, and from this page: a form on another site can't send either.
             if not self.headers.get("Content-Type", "").startswith("application/json"):
-                return self.json(415, {"error": "JSON erwartet"})
+                return self.json(415, {"error": "JSON expected"})
             if not self.may_setup():
-                return self.json(401, {"ok": False, "error": "Setup-Token falsch oder nicht angemeldet"})
+                return self.json(401, {"ok": False, "error": "wrong setup token or not signed in"})
             try:
                 req = json.loads(self.body() or b"{}")
             except ValueError:
-                return self.json(400, {"ok": False, "error": "Ungültiges JSON"})
+                return self.json(400, {"ok": False, "error": "invalid JSON"})
             if path == "/setup/test":
                 return self.json(200, wizard_test(req))
             if DEMO:
-                return self.json(400, {"ok": False, "error": "Im Demo-Modus wird nichts gespeichert"})
+                return self.json(400, {"ok": False, "error": "Nothing is saved in demo mode"})
             try:
                 c = build_config(req)
             except ValueError as e:
@@ -1387,9 +1387,9 @@ class Handler(BaseHTTPRequestHandler):
             save_settings(updates={**settings_updates(), "acked": str(req.get("id") or "")})
             return 200, {"ok": True}
         if not updater_conf():
-            return 400, {"ok": False, "error": "Updates gibt es nur bei der Installation mit install-in-container.sh (LXC)."}
+            return 400, {"ok": False, "error": "Updates are only available on installs made with install-in-container.sh (LXC)."}
         if update_status().get("state") == "running":
-            return 409, {"ok": False, "error": "Es läuft schon ein Update."}
+            return 409, {"ok": False, "error": "An update is already running."}
         if path == "/api/update/check":
             update_request("check", requested_by=AUTH.get("user"))
             return 200, {"ok": True}
@@ -1397,15 +1397,15 @@ class Handler(BaseHTTPRequestHandler):
             # Like signing a change: the password again, so an open session alone can't install.
             if not check_login(AUTH.get("user", ""), req.get("password") or ""):
                 time.sleep(0.8)
-                return 403, {"ok": False, "error": "Passwort falsch"}
+                return 403, {"ok": False, "error": "wrong password"}
             avail = update_status().get("available") or {}
             version = str(req.get("version") or "")
             if not re.fullmatch(r"\d+\.\d+\.\d+", version) or version != avail.get("version") or not avail.get("installable"):
-                return 400, {"ok": False, "error": "Diese Version kann gerade nicht installiert werden. Erst nach Updates suchen."}
+                return 400, {"ok": False, "error": "This version can't be installed right now. Check for updates first."}
             update_request("install", version=version, requested_by=AUTH.get("user"))
-            LIVE.emit("Dashboard", "info", f"Update auf {version} angestoßen von {AUTH.get('user')}", "info")
+            LIVE.emit("Dashboard", "info", f"update to {version} started by {AUTH.get('user')}", "info")
             return 200, {"ok": True}
-        return 404, {"ok": False, "error": "unbekannt"}
+        return 404, {"ok": False, "error": "unknown"}
 
     def login(self):
         ip = self.client_ip()

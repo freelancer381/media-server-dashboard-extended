@@ -100,7 +100,7 @@ def main():
         token = open(os.path.join(data, "setup-token.txt")).read().strip()
         check(c.req("POST", "/setup/save", "user=a", ctype="application/x-www-form-urlencoded", headers={"X-Setup-Token": token})[0] == 415, "form posts are refused")
         s, _, d = c.req("POST", "/setup/save", {"user": "admin", "password": "short"}, headers={"X-Setup-Token": token})
-        check(s == 400 and "10 Zeichen" in json.loads(d)["error"], "short passwords are refused")
+        check(s == 400 and "10 characters" in json.loads(d)["error"], "short passwords are refused")
         s, _, d = c.req("POST", "/setup/save", {"title": "Smoke", "user": "admin", "password": "smoke-test-pw", "game": {"enabled": True},
                                                 "home": {"enabled": True, "tiles": [{"name": "NAS", "check": "127.0.0.1:1"}]}},
                         headers={"X-Setup-Token": token})
@@ -130,7 +130,7 @@ def main():
         check(c.req("POST", f"/hook/{hook}", b"not json")[0] == 400, "broken webhook bodies are refused")
 
         sock, seen, hello = read_events(port, c.cookie, "hello")
-        check(any(e["text"].startswith("hat Smoke Movie") for e in hello["events"]), "the stream starts with the history")
+        check(any(e["text"].startswith("imported Smoke Movie") for e in hello["events"]), "the stream starts with the history")
         check(hello["game"]["players"][0]["name"] == "Radarr", "the game counted the import")
         c.req("POST", f"/hook/{hook}?source=SABnzbd", {"version": "1.0", "title": "SABnzbd", "message": "Smoke completed", "type": "success"})
         buf, end, got = b"", time.time() + 6, False

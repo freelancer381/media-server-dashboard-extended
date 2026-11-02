@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -78,67 +78,67 @@ code { background: rgba(255, 255, 255, .1); padding: 1px 5px; border-radius: 6px
 </head>
 <body>
 <main>
-  <header><h1 id="heading">Einrichtung</h1><a id="back" href="/" hidden>← Zum Dashboard</a></header>
-  <nav id="steps" aria-label="Schritte"></nav>
+  <header><h1 id="heading">Setup</h1><a id="back" href="/" hidden>← Back to the dashboard</a></header>
+  <nav id="steps" aria-label="Steps"></nav>
 
   <section class="glass" data-step="Start" id="s-token">
-    <h2>Willkommen</h2>
-    <p>Gib den Setup-Token ein. Ihn hat das Installationsskript am Ende ausgegeben; du findest ihn auch im Container unter <code>/var/lib/media-server-dashboard/setup-token.txt</code> oder im Log (<code>journalctl -u media-server-dashboard</code>).</p>
-    <label>Setup-Token<input id="token" type="text" autocomplete="off" spellcheck="false" placeholder="xxxxxxxx-xxxxxxxx"></label>
+    <h2>Welcome</h2>
+    <p>Enter the setup token. The install script printed it at the end; it is also in <code>setup-token.txt</code> in the data folder (LXC: <code>/var/lib/media-server-dashboard/</code>) and in the log (<code>journalctl -u media-server-dashboard</code>, Docker: <code>docker compose logs</code>).</p>
+    <label>Setup token<input id="token" type="text" autocomplete="off" spellcheck="false" placeholder="xxxxxxxx-xxxxxxxx"></label>
     <div class="status" id="tokenStatus"></div>
-    <div class="row end"><span></span><button id="tokenGo">Weiter</button></div>
+    <div class="row end"><span></span><button id="tokenGo">Continue</button></div>
   </section>
 
-  <section class="glass" data-step="Zugang" id="s-user">
-    <h2>Zugang</h2>
-    <p>Mit diesem Benutzer meldest du dich am Dashboard an.</p>
-    <label>Titel des Dashboards<input id="title" type="text" maxlength="80"></label>
-    <label>Benutzername<input id="user" type="text" autocomplete="username" autocapitalize="none" spellcheck="false"></label>
+  <section class="glass" data-step="Account" id="s-user">
+    <h2>Account</h2>
+    <p>You sign in to the dashboard with this user.</p>
+    <label>Dashboard title<input id="title" type="text" maxlength="80"></label>
+    <label>User name<input id="user" type="text" autocomplete="username" autocapitalize="none" spellcheck="false"></label>
     <div class="grid2">
-      <label>Passwort <span id="pwHint"></span><input id="pw" type="password" autocomplete="new-password"></label>
-      <label>Passwort wiederholen<input id="pw2" type="password" autocomplete="new-password"></label>
+      <label>Password <span id="pwHint"></span><input id="pw" type="password" autocomplete="new-password"></label>
+      <label>Repeat the password<input id="pw2" type="password" autocomplete="new-password"></label>
     </div>
-    <div class="hint">Mindestens 10 Zeichen.</div>
+    <div class="hint">At least 10 characters.</div>
   </section>
 
-  <section class="glass" data-step="Adresse" id="s-address">
-    <h2>Adresse</h2>
-    <p>Wie soll das Dashboard erreichbar sein?</p>
+  <section class="glass" data-step="Address" id="s-address">
+    <h2>Address</h2>
+    <p>How should the dashboard be reached?</p>
     <div class="radio">
-      <label class="check"><input type="radio" name="addr" value="ip"><span>Nur über die IP-Adresse<small id="ipHint">http://&lt;IP des Containers&gt;</small></span></label>
-      <label class="check"><input type="radio" name="addr" value="domain"><span>Eigene Domain<small>z. B. dashboard.example.com oder dashboard.home.lan</small></span></label>
+      <label class="check"><input type="radio" name="addr" value="ip"><span>By IP address only<small id="ipHint">http://&lt;container IP&gt;</small></span></label>
+      <label class="check"><input type="radio" name="addr" value="domain"><span>Your own domain<small>e.g. dashboard.example.com or dashboard.home.lan</small></span></label>
     </div>
     <div id="domainBox" class="body" hidden>
       <label>Domain<input id="domain" type="text" autocapitalize="none" spellcheck="false" placeholder="dashboard.example.com"></label>
       <div class="radio">
-        <label class="check"><input type="radio" name="tls" value="public"><span>HTTPS mit Let's Encrypt<small>Die Domain muss öffentlich auf diese Adresse zeigen und Port 80/443 muss erreichbar sein.</small></span></label>
-        <label class="check"><input type="radio" name="tls" value="internal"><span>HTTPS mit eigener, interner CA<small>Für Domains nur im Heimnetz (z. B. *.home.lan). Der Browser warnt, bis du die CA von Caddy importierst.</small></span></label>
+        <label class="check"><input type="radio" name="tls" value="public"><span>HTTPS with Let's Encrypt<small>The domain must point at this address publicly, and ports 80/443 must be reachable.</small></span></label>
+        <label class="check"><input type="radio" name="tls" value="internal"><span>HTTPS with an internal CA<small>For domains on your home network only (e.g. *.home.lan). Browsers warn until you import Caddy's CA.</small></span></label>
       </div>
-      <label class="check"><input id="ipAccess" type="checkbox"> Zusätzlich weiter über http://&lt;IP&gt; erreichbar</label>
+      <label class="check"><input id="ipAccess" type="checkbox"> Also keep it reachable at http://&lt;IP&gt;</label>
     </div>
-    <p class="hint" id="noCaddy" hidden>Hinweis: Dieser Server läuft ohne den mitgelieferten Reverse Proxy (Caddy). Die Domain wird nur gespeichert; HTTPS musst du selbst davor einrichten.</p>
+    <p class="hint" id="noCaddy" hidden>Note: this server runs without the bundled reverse proxy (Caddy). The domain is only stored; set up HTTPS in front of it yourself.</p>
   </section>
 
   <section class="glass" data-step="Proxmox" id="s-pve">
     <h2>Proxmox</h2>
-    <p>Liefert CPU, RAM, Netzwerk, Speicherplatz und den Status deiner Container/VMs. Ein API-Token mit der Rolle <code>PVEAuditor</code> (nur lesen) reicht.</p>
-    <label class="check"><input id="pveOn" type="checkbox"> Proxmox-Host anbinden</label>
+    <p>Provides CPU, memory, network, storage and the state of your containers and VMs. An API token with the <code>PVEAuditor</code> role (read-only) is enough.</p>
+    <label class="check"><input id="pveOn" type="checkbox"> Connect a Proxmox host</label>
     <div id="pveBox" class="body">
       <label>URL<input id="pveUrl" type="url" placeholder="https://192.168.1.10:8006"></label>
       <div class="grid2">
-        <label>Token-ID<input id="pveTokenId" type="text" spellcheck="false" placeholder="dashboard@pve!msd"></label>
-        <label>Token-Secret <span id="pveSecretHint"></span><input id="pveSecret" type="password" autocomplete="off" placeholder="xxxxxxxx-xxxx-…"></label>
+        <label>Token ID<input id="pveTokenId" type="text" spellcheck="false" placeholder="dashboard@pve!msd"></label>
+        <label>Token secret <span id="pveSecretHint"></span><input id="pveSecret" type="password" autocomplete="off" placeholder="xxxxxxxx-xxxx-…"></label>
       </div>
-      <label class="check"><input id="pveVerify" type="checkbox"> Zertifikat prüfen</label>
-      <label id="caBox">CA-Datei (optional)<input id="pveCa" type="text" spellcheck="false" placeholder="/var/lib/media-server-dashboard/pve-root-ca.pem"></label>
-      <div class="row"><button class="ghost" id="pveTest">Verbindung testen</button><span class="status" id="pveStatus"></span></div>
+      <label class="check"><input id="pveVerify" type="checkbox"> Check the certificate</label>
+      <label id="caBox">CA file (optional)<input id="pveCa" type="text" spellcheck="false" placeholder="/var/lib/media-server-dashboard/pve-root-ca.pem"></label>
+      <div class="row"><button class="ghost" id="pveTest">Test connection</button><span class="status" id="pveStatus"></span></div>
       <div id="pveFound" hidden class="body">
         <label>Node<select id="pveNode"></select></label>
-        <h3>Laufwerke anzeigen</h3>
-        <div class="hint">Keins ausgewählt = alle aktiven Storages.</div>
+        <h3>Storages to show</h3>
+        <div class="hint">None ticked = every active storage.</div>
         <div class="list" id="pveStorages"></div>
-        <h3>Diese Container/VMs überwachen</h3>
-        <div class="hint">Läuft einer davon nicht, zeigt das Dashboard eine Warnung.</div>
+        <h3>Watch these containers/VMs</h3>
+        <div class="hint">If one of them isn't running, the dashboard shows a warning.</div>
         <div class="list" id="pveGuests"></div>
       </div>
     </div>
@@ -146,59 +146,59 @@ code { background: rgba(255, 255, 255, .1); padding: 1px 5px; border-radius: 6px
 
   <section class="glass" data-step="Apps" id="s-apps">
     <h2>Apps</h2>
-    <p>Hake an, was bei dir läuft. Die URL ist die Adresse der App aus Sicht dieses Containers, inklusive URL-Basis, falls gesetzt (z. B. <code>http://192.168.1.21:7878</code>). Den API-Key findest du in der jeweiligen App unter Settings → General.</p>
+    <p>Tick what you run. The URL is the app's address as this server sees it, including its URL base if it has one (e.g. <code>http://192.168.1.21:7878</code>). Each app shows its API key under Settings → General.</p>
     <div id="builtinApps" class="body"></div>
-    <h3>Eigene Apps</h3>
-    <p class="hint">Weitere *arr-Apps (Lidarr, Readarr, Whisparr …) oder ein beliebiges Tool mit HTTP-Adresse. Sie erscheinen als Dienst im Dashboard und als Mitarbeiter im Office.</p>
+    <h3>Custom apps</h3>
+    <p class="hint">More *arr apps (Lidarr, Readarr, Whisparr …) or any tool with an HTTP address. They show up as a service on the dashboard and as staff in the office.</p>
     <div id="customApps" class="body"></div>
     <div class="row">
-      <select id="preset" aria-label="Vorlage">
+      <select id="preset" aria-label="Preset">
         <option value="lidarr">Lidarr</option><option value="readarr">Readarr</option><option value="whisparr">Whisparr</option>
         <option value="seerr">Jellyseerr / Overseerr</option><option value="jellyfin">Jellyfin</option><option value="plex">Plex</option>
-        <option value="tautulli">Tautulli</option><option value="qbit">qBittorrent</option><option value="arr">Andere *arr-App</option><option value="generic">Eigenes Tool</option>
+        <option value="tautulli">Tautulli</option><option value="qbit">qBittorrent</option><option value="arr">Other *arr app</option><option value="generic">Other tool</option>
       </select>
-      <button class="ghost" id="addCustom">+ Hinzufügen</button>
+      <button class="ghost" id="addCustom">+ Add</button>
     </div>
   </section>
 
-  <section class="glass" data-step="Startseite" id="s-home">
-    <h2>Startseite</h2>
-    <p>Eine eigene Übersicht mit Links zu deinen Diensten, neben dem 3D-Büro. Jede Kachel zeigt, ob der Dienst erreichbar ist; mit verknüpftem Proxmox-Gast auch CPU, RAM und Traffic. Oben stehen die Werte des Hosts.</p>
-    <label class="check"><input id="homeOn" type="checkbox"> Startseite neben dem Büro anzeigen</label>
+  <section class="glass" data-step="Start page" id="s-home">
+    <h2>Start page</h2>
+    <p>Your own overview with links to your services, beside the 3D office. Every tile shows whether the service is reachable; with a linked Proxmox guest also CPU, memory and traffic. The host's numbers are on top.</p>
+    <label class="check"><input id="homeOn" type="checkbox"> Show a start page beside the office</label>
     <div id="homeBox" class="body">
       <div class="grid2">
         <div class="radio"><b class="hint">Position</b>
-          <label class="check"><input type="radio" name="side" value="left"> Links vom Büro</label>
-          <label class="check"><input type="radio" name="side" value="right"> Rechts vom Büro</label></div>
-        <div class="radio"><b class="hint">Darstellung</b>
-          <label class="check"><input type="radio" name="layout" value="grid"> Kacheln</label>
-          <label class="check"><input type="radio" name="layout" value="table"> Tabelle</label></div>
+          <label class="check"><input type="radio" name="side" value="left"> Left of the office</label>
+          <label class="check"><input type="radio" name="side" value="right"> Right of the office</label></div>
+        <div class="radio"><b class="hint">Layout</b>
+          <label class="check"><input type="radio" name="layout" value="grid"> Tiles</label>
+          <label class="check"><input type="radio" name="layout" value="table"> Table</label></div>
       </div>
-      <label class="check"><input id="homeStart" type="checkbox"> Nach dem Login direkt Büro + Startseite öffnen</label>
-      <div class="row"><h3 style="flex:1">Kacheln</h3><button class="ghost mini" id="tilesFromApps">Aus eingerichteten Apps übernehmen</button><button class="ghost mini" id="addTile">+ Kachel</button></div>
+      <label class="check"><input id="homeStart" type="checkbox"> Open the office with the start page after signing in</label>
+      <div class="row"><h3 style="flex:1">Tiles</h3><button class="ghost mini" id="tilesFromApps">Add the apps set up above</button><button class="ghost mini" id="addTile">+ Tile</button></div>
       <div id="tiles" class="body"></div>
     </div>
   </section>
 
-  <section class="glass" data-step="Live-Feed" id="s-live">
-    <h2>Live-Feed</h2>
-    <p>Was deine Apps tun, erscheint im Büro als Chat: geholt, importiert, Untertitel gefunden, jemand schaut etwas. Einiges erkennt das Dashboard selbst; mit Webhooks kommt alles sofort und vollständig an.</p>
-    <label class="check"><input id="gameOn" type="checkbox"> Punkte, Level und Abzeichen für die Mitarbeiter (Team-Tafel im Büro)</label>
-    <div id="hookNone" class="hint" hidden>Die Webhook-Adresse wird beim Speichern erzeugt. Danach findest du sie hier in den Einstellungen.</div>
+  <section class="glass" data-step="Live feed" id="s-live">
+    <h2>Live feed</h2>
+    <p>What your apps do shows up in the office as a chat: grabbed, imported, subtitles found, someone is watching. The dashboard notices some of it itself; with webhooks everything arrives at once and in full.</p>
+    <label class="check"><input id="gameOn" type="checkbox"> Points, levels and badges for the staff (team board in the office)</label>
+    <div id="hookNone" class="hint" hidden>The webhook address is created when you save. You'll find it here in the settings afterwards.</div>
     <div id="hookBox" class="body" hidden>
-      <div class="row"><label style="flex:1">Adresse, unter der deine Apps das Dashboard erreichen
+      <div class="row"><label style="flex:1">Address your apps reach the dashboard at
         <select id="hookBase"></select></label></div>
       <div id="hookRows"></div>
-      <details><summary class="hint" style="cursor:pointer">Jellyfin-Vorlage und eigene Tools</summary>
+      <details><summary class="hint" style="cursor:pointer">Jellyfin template and your own tools</summary>
         <div class="body" style="margin-top:8px">
-          <p class="hint">Jellyfin: Plugin „Webhook“ → Add Generic Destination → URL von oben, Benachrichtigungen z. B. Playback Start und Item Added, Header <code>Content-Type: application/json</code>, Vorlage:</p>
+          <p class="hint">Jellyfin: plugin "Webhook" → Add Generic Destination → the URL above, notifications e.g. Playback Start and Item Added, header <code>Content-Type: application/json</code>, template:</p>
           <pre class="tpl">{"NotificationType":"{{NotificationType}}","Name":"{{Name}}","SeriesName":"{{SeriesName}}","NotificationUsername":"{{NotificationUsername}}"}</pre>
-          <p class="hint">Eigene Skripte schicken einfach JSON:</p>
+          <p class="hint">Your own scripts just send JSON:</p>
           <pre class="tpl" id="curlExample"></pre>
         </div></details>
-      <label class="check"><input id="newHook" type="checkbox"> Beim Speichern eine neue Webhook-Adresse erzeugen (die alte funktioniert dann nicht mehr)</label>
+      <label class="check"><input id="newHook" type="checkbox"> Create a new webhook address when saving (the old one stops working)</label>
     </div>
-    <div class="row"><button class="ghost" id="hookTest">Test-Nachricht senden</button><button class="ghost" id="gameReset" hidden>Punkte zurücksetzen</button><span class="status" id="hookStatus"></span></div>
+    <div class="row"><button class="ghost" id="hookTest">Send a test message</button><button class="ghost" id="gameReset" hidden>Reset points</button><span class="status" id="hookStatus"></span></div>
   </section>
 
   <section class="glass" data-step="Updates" id="s-updates">
@@ -206,27 +206,27 @@ code { background: rgba(255, 255, 255, .1); padding: 1px 5px; border-radius: 6px
     <p id="updVersion"></p>
     <div id="updUnmanaged" class="card" hidden></div>
     <div id="updManaged" class="body" hidden>
-      <div class="row"><button class="ghost" id="updCheck">Nach Updates suchen</button><span class="status" id="updCheckStatus"></span></div>
+      <div class="row"><button class="ghost" id="updCheck">Check for updates</button><span class="status" id="updCheckStatus"></span></div>
       <div id="updResult" class="card" hidden></div>
       <div id="updAvail" class="card" hidden></div>
-      <div id="updRun" class="card" hidden><b>Update läuft</b><ul class="steps" id="updSteps"></ul><pre class="log" id="updLog"></pre></div>
+      <div id="updRun" class="card" hidden><b>Update running</b><ul class="steps" id="updSteps"></ul><pre class="log" id="updLog"></pre></div>
       <div id="updRefused" class="hint" hidden></div>
       <div class="grid2">
-        <label class="check"><input id="updAuto" type="checkbox"> Neue Versionen automatisch installieren</label>
-        <label>um<select id="updHour"></select></label>
+        <label class="check"><input id="updAuto" type="checkbox"> Install new versions automatically</label>
+        <label>at<select id="updHour"></select></label>
       </div>
-      <p class="hint">Installiert werden nur Releases, die der Release-Workflow von <span id="updRepo"></span> signiert hat (Sigstore). Vorher werden die Einstellungen gesichert; startet die neue Version nicht sauber, läuft automatisch wieder die alte.</p>
+      <p class="hint">Only releases signed by the release workflow of <span id="updRepo"></span> are installed (Sigstore). The settings are backed up first; if the new version doesn't start cleanly, the previous one runs again automatically.</p>
     </div>
   </section>
 
-  <section class="glass" data-step="Fertig" id="s-done">
-    <h2>Zusammenfassung</h2>
+  <section class="glass" data-step="Done" id="s-done">
+    <h2>Summary</h2>
     <dl class="summary" id="summary"></dl>
     <div id="error" role="alert"></div>
-    <div class="row end"><span class="hint">Beim Speichern startet der Dienst neu.</span><button id="save">Speichern</button></div>
+    <div class="row end"><span class="hint">Saving restarts the service.</span><button id="save">Save</button></div>
   </section>
 
-  <div class="row end" id="pager" style="margin-top:14px"><button class="ghost" id="prev">← Zurück</button><button id="next">Weiter →</button></div>
+  <div class="row end" id="pager" style="margin-top:14px"><button class="ghost" id="prev">← Back</button><button id="next">Next →</button></div>
 </main>
 
 <script>
@@ -281,22 +281,22 @@ $('next').onclick = () => { const msg = validate(sections()[step].id); if (msg) 
 
 function validate(id) {
   if (id === 's-user') {
-    if (!/^[A-Za-z0-9._@-]{2,64}$/.test($('user').value.trim())) return 'Benutzername: 2–64 Zeichen, nur Buchstaben, Ziffern und . _ @ -';
+    if (!/^[A-Za-z0-9._@-]{2,64}$/.test($('user').value.trim())) return 'User name: 2–64 characters, only letters, digits and . _ @ -';
     if (!cfg.setup_done || $('pw').value) {
-      if ($('pw').value.length < 10) return 'Das Passwort braucht mindestens 10 Zeichen.';
-      if ($('pw').value !== $('pw2').value) return 'Die Passwörter stimmen nicht überein.';
+      if ($('pw').value.length < 10) return 'The password needs at least 10 characters.';
+      if ($('pw').value !== $('pw2').value) return 'The passwords don\'t match.';
     }
   }
-  if (id === 's-address' && addrMode() === 'domain' && !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/i.test($('domain').value.trim())) return 'Bitte eine gültige Domain eingeben.';
+  if (id === 's-address' && addrMode() === 'domain' && !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/i.test($('domain').value.trim())) return 'Please enter a valid domain.';
   if (id === 's-pve' && $('pveOn').checked) {
-    if (!$('pveUrl').value.trim() || !$('pveTokenId').value.trim() || (!$('pveSecret').value && !cfg.proxmox.has_secret)) return 'Bitte URL, Token-ID und Secret ausfüllen.';
-    if (!$('pveNode').value) return 'Bitte erst „Verbindung testen“, damit der Node ausgewählt werden kann.';
+    if (!$('pveUrl').value.trim() || !$('pveTokenId').value.trim() || (!$('pveSecret').value && !cfg.proxmox.has_secret)) return 'Please fill in URL, token ID and secret.';
+    if (!$('pveNode').value) return 'Please "Test connection" first so the node can be picked.';
   }
   if (id === 's-home' && $('homeOn').checked) {
     for (const t of [...document.querySelectorAll('#tiles .tile')].map((el) => el.read())) {
-      if (!t.name) return 'Jede Kachel braucht einen Namen.';
-      if (!t.url && !t.check) return `${t.name}: bitte URL oder IP:Port angeben.`;
-      if (t.url && !/^https?:\/\/[^/\s]+/i.test(t.url)) return `${t.name}: die URL muss mit http:// oder https:// beginnen.`;
+      if (!t.name) return 'Every tile needs a name.';
+      if (!t.url && !t.check) return `${t.name}: please enter a URL or IP:port.`;
+      if (t.url && !/^https?:\/\/[^/\s]+/i.test(t.url)) return `${t.name}: the URL must start with http:// or https://.`;
     }
   }
   return '';
@@ -305,7 +305,7 @@ function validate(id) {
 // ---------- token ----------
 $('tokenGo').onclick = async () => {
   token = $('token').value.trim();
-  setStatus($('tokenStatus'), 'busy', 'Prüfe …');
+  setStatus($('tokenStatus'), 'busy', 'Checking …');
   const c = await api('/setup/config');
   if (c.error) return setStatus($('tokenStatus'), 'err', c.error);
   load(c);
@@ -324,15 +324,15 @@ $('pveOn').addEventListener('change', syncPve);
 $('pveVerify').addEventListener('change', syncPve);
 const pveInput = () => ({ url: $('pveUrl').value.trim(), token_id: $('pveTokenId').value.trim(), token_secret: $('pveSecret').value, verify_tls: $('pveVerify').checked, ca_file: $('pveCa').value.trim(), node: $('pveNode').value || cfg.proxmox.node });
 async function testPve() {
-  setStatus($('pveStatus'), 'busy', 'Verbinde …');
+  setStatus($('pveStatus'), 'busy', 'Connecting …');
   const r = await api('/setup/test', { what: 'proxmox', proxmox: pveInput() });
   if (!r.ok) { $('pveFound').hidden = true; return setStatus($('pveStatus'), 'err', '✕ ' + r.error); }
-  setStatus($('pveStatus'), 'ok', `✓ Verbunden · Proxmox VE ${r.version}`);
+  setStatus($('pveStatus'), 'ok', `✓ Connected · Proxmox VE ${r.version}`);
   pveResult = r;
   $('pveNode').innerHTML = r.nodes.map((n) => `<option ${n === r.node ? 'selected' : ''}>${esc(n)}</option>`).join('');
   const gb = (b) => (b / 1024 ** 3).toFixed(0) + ' GB';
-  $('pveStorages').innerHTML = r.storages.map((s) => `<label class="check"><input type="checkbox" value="${esc(s.name)}" ${cfg.storages.includes(s.name) ? 'checked' : ''}> ${esc(s.name)} <span class="hint">${esc(s.type)} · ${gb(s.total)}</span></label>`).join('') || '<span class="hint">Keine aktiven Storages gefunden.</span>';
-  $('pveGuests').innerHTML = r.guests.map((g) => `<label class="check"><input type="checkbox" value="${g.id}" ${cfg.watch_guests.includes(String(g.id)) || cfg.watch_guests.includes(g.name) ? 'checked' : ''}> ${g.id} ${esc(g.name || '')} <span class="hint">${g.type === 'lxc' ? 'LXC' : 'VM'} · ${esc(g.status)}</span></label>`).join('') || '<span class="hint">Keine Gäste gefunden.</span>';
+  $('pveStorages').innerHTML = r.storages.map((s) => `<label class="check"><input type="checkbox" value="${esc(s.name)}" ${cfg.storages.includes(s.name) ? 'checked' : ''}> ${esc(s.name)} <span class="hint">${esc(s.type)} · ${gb(s.total)}</span></label>`).join('') || '<span class="hint">No active storages found.</span>';
+  $('pveGuests').innerHTML = r.guests.map((g) => `<label class="check"><input type="checkbox" value="${g.id}" ${cfg.watch_guests.includes(String(g.id)) || cfg.watch_guests.includes(g.name) ? 'checked' : ''}> ${g.id} ${esc(g.name || '')} <span class="hint">${g.type === 'lxc' ? 'LXC' : 'VM'} · ${esc(g.status)}</span></label>`).join('') || '<span class="hint">No guests found.</span>';
   $('pveFound').hidden = false;
   document.querySelectorAll('#tiles .tile').forEach((el) => el.refreshGuests());
 }
@@ -349,10 +349,10 @@ function builtinCard(key, b, a) {
     <div class="body">
       <div class="grid2">
         <label>URL<input type="url" class="url" value="${esc(a.url)}" placeholder="http://192.168.1.x:${b.port}"></label>
-        <label>API-Key ${a.has_key ? '<span class="hint">(gespeichert – leer lassen zum Behalten)</span>' : ''}<input type="password" class="key" autocomplete="off"></label>
+        <label>API key ${a.has_key ? '<span class="hint">(saved – leave empty to keep it)</span>' : ''}<input type="password" class="key" autocomplete="off"></label>
       </div>
-      <div class="row"><label class="check"><input type="checkbox" class="verify" ${a.verify_tls !== false ? 'checked' : ''}> Zertifikat prüfen (bei https)</label>
-        <button class="ghost test">Testen</button><span class="status"></span></div>
+      <div class="row"><label class="check"><input type="checkbox" class="verify" ${a.verify_tls !== false ? 'checked' : ''}> Check the certificate (https)</label>
+        <button class="ghost test">Test</button><span class="status"></span></div>
     </div>`;
   wireCard(el, () => ({ key, url: el.querySelector('.url').value.trim(), api_key: el.querySelector('.key').value, verify_tls: el.querySelector('.verify').checked }));
   return el;
@@ -361,31 +361,31 @@ function customCard(a) {
   const el = document.createElement('div');
   el.className = 'app custom';
   const sel = (cls, opts, v) => `<select class="${cls}">${opts.map(([k, t]) => `<option value="${k}" ${k === v ? 'selected' : ''}>${t}</option>`).join('')}</select>`;
-  el.innerHTML = `<div class="row end"><b class="title">${esc(a.name || 'Neue App')}</b><button class="danger remove">Entfernen</button></div>
+  el.innerHTML = `<div class="row end"><b class="title">${esc(a.name || 'New app')}</b><button class="danger remove">Remove</button></div>
     <div class="body">
       <div class="grid2">
         <label>Name<input type="text" class="name" maxlength="40" value="${esc(a.name || '')}"></label>
-        <label>Art${sel('kind', [['arr', '*arr-App (Lidarr, Readarr …)'], ['generic', 'Beliebiges Tool (HTTP)']], a.kind)}</label>
+        <label>Kind${sel('kind', [['arr', '*arr app (Lidarr, Readarr …)'], ['generic', 'Any tool (HTTP)']], a.kind)}</label>
       </div>
       <div class="grid2">
         <label>URL<input type="url" class="url" value="${esc(a.url || '')}" placeholder="http://192.168.1.x${a.port ? ':' + a.port : ''}"></label>
-        <label>API-Key / Token ${a.has_key ? '<span class="hint">(gespeichert)</span>' : ''}<input type="password" class="key" autocomplete="off"></label>
+        <label>API key / token ${a.has_key ? '<span class="hint">(saved)</span>' : ''}<input type="password" class="key" autocomplete="off"></label>
       </div>
-      <div class="grid2 arrOnly"><label>API-Version${sel('apiv', [['v1', 'v1 (Lidarr, Readarr, Prowlarr)'], ['v3', 'v3 (Radarr, Sonarr, Whisparr)']], a.api_version || 'v1')}</label></div>
+      <div class="grid2 arrOnly"><label>API version${sel('apiv', [['v1', 'v1 (Lidarr, Readarr, Prowlarr)'], ['v3', 'v3 (Radarr, Sonarr, Whisparr)']], a.api_version || 'v1')}</label></div>
       <div class="grid2 genOnly">
-        <label>Status-Pfad<input type="text" class="health" value="${esc(a.health_path || '/')}"></label>
-        <label>Key mitsenden als${sel('auth', [['header', 'HTTP-Header'], ['query', 'URL-Parameter'], ['none', 'gar nicht']], a.auth || 'header')}</label>
-        <label class="authName">Header-/Parametername<input type="text" class="authname" value="${esc(a.auth_name || 'X-Api-Key')}"></label>
+        <label>Status path<input type="text" class="health" value="${esc(a.health_path || '/')}"></label>
+        <label>Send the key as${sel('auth', [['header', 'HTTP header'], ['query', 'URL parameter'], ['none', 'not at all']], a.auth || 'header')}</label>
+        <label class="authName">Header / parameter name<input type="text" class="authname" value="${esc(a.auth_name || 'X-Api-Key')}"></label>
       </div>
-      <div class="row"><label class="check"><input type="checkbox" class="verify" ${a.verify_tls !== false ? 'checked' : ''}> Zertifikat prüfen (bei https)</label>
-        <button class="ghost test">Testen</button><span class="status"></span></div>
+      <div class="row"><label class="check"><input type="checkbox" class="verify" ${a.verify_tls !== false ? 'checked' : ''}> Check the certificate (https)</label>
+        <button class="ghost test">Test</button><span class="status"></span></div>
     </div>`;
   const q = (c) => el.querySelector(c);
   const sync = () => {
     const arr = q('.kind').value === 'arr';
     q('.arrOnly').hidden = !arr; q('.genOnly').hidden = arr;
     q('.authName').hidden = q('.auth').value === 'none';
-    q('.title').textContent = q('.name').value || 'Neue App';
+    q('.title').textContent = q('.name').value || 'New app';
   };
   ['.kind', '.auth', '.name'].forEach((c) => q(c).addEventListener('input', sync));
   q('.remove').onclick = () => el.remove();
@@ -400,9 +400,9 @@ function wireCard(el, read) {
   if (on) on.addEventListener('change', () => el.classList.toggle('off', !on.checked));
   el.querySelector('.test').onclick = async () => {
     const st = el.querySelector('.status');
-    setStatus(st, 'busy', 'Teste …');
+    setStatus(st, 'busy', 'Testing …');
     const r = await api('/setup/test', { what: 'app', app: read() });
-    setStatus(st, r.ok ? 'ok' : 'err', r.ok ? `✓ Erreichbar${r.version ? ' · Version ' + r.version : ''}` : '✕ ' + r.error);
+    setStatus(st, r.ok ? 'ok' : 'err', r.ok ? `✓ Reachable${r.version ? ' · version ' + r.version : ''}` : '✕ ' + r.error);
   };
 }
 $('addCustom').onclick = () => { const card = customCard({ ...PRESETS[$('preset').value] }); $('customApps').append(card); card.querySelector('.url').focus(); };
@@ -410,7 +410,7 @@ $('addCustom').onclick = () => { const card = customCard({ ...PRESETS[$('preset'
 // ---------- start page tiles ----------
 function syncHome() { $('homeBox').hidden = !$('homeOn').checked; }
 $('homeOn').addEventListener('change', syncHome);
-const guestOptions = (sel) => '<option value="">– keiner –</option>' + ((pveResult && pveResult.guests) || []).map((g) =>
+const guestOptions = (sel) => '<option value="">– none –</option>' + ((pveResult && pveResult.guests) || []).map((g) =>
   `<option value="${g.id}" ${String(sel) === String(g.id) ? 'selected' : ''}>${g.id} ${esc(g.name || '')} (${g.type === 'lxc' ? 'LXC' : 'VM'})</option>`).join('')
   + (sel && !((pveResult && pveResult.guests) || []).some((g) => String(g.id) === String(sel)) ? `<option value="${esc(sel)}" selected>${esc(sel)}</option>` : '');
 // Shrink an uploaded image to 64×64 so the config stays small.
@@ -420,7 +420,7 @@ function shrink(file) {
     const img = new Image();
     img.onload = () => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); const k = Math.min(64 / img.width, 64 / img.height);
       g.drawImage(img, (64 - img.width * k) / 2, (64 - img.height * k) / 2, img.width * k, img.height * k); URL.revokeObjectURL(img.src); res(c.toDataURL('image/png')); };
-    img.onerror = () => rej(new Error('Kein Bild'));
+    img.onerror = () => rej(new Error('not an image'));
     img.src = URL.createObjectURL(file);
   });
 }
@@ -428,19 +428,19 @@ function tileCard(t) {
   const el = document.createElement('div');
   el.className = 'app tile';
   el.innerHTML = `<div class="tileRow">
-      <div class="iconPick"><div class="iconPrev"></div><input type="text" class="emoji" maxlength="8" placeholder="Emoji" aria-label="Emoji als Icon">
-        <label class="ghost mini" style="cursor:pointer;color:var(--text)">Bild…<input type="file" accept="image/*" hidden class="file"></label></div>
+      <div class="iconPick"><div class="iconPrev"></div><input type="text" class="emoji" maxlength="8" placeholder="Emoji" aria-label="Emoji as icon">
+        <label class="ghost mini" style="cursor:pointer;color:var(--text)">Image…<input type="file" accept="image/*" hidden class="file"></label></div>
       <div class="body">
         <div class="grid2">
           <label>Name<input type="text" class="name" maxlength="40" value="${esc(t.name || '')}"></label>
-          <label>URL (Klickziel)<input type="url" class="url" value="${esc(t.url || '')}" placeholder="https://jellyfin.home.lan"></label>
+          <label>URL (link target)<input type="url" class="url" value="${esc(t.url || '')}" placeholder="https://jellyfin.home.lan"></label>
         </div>
         <div class="grid2">
-          <label>IP:Port prüfen (optional)<input type="text" class="check" value="${esc(t.check || '')}" placeholder="192.168.1.30:8096"></label>
-          <label>Proxmox-Gast (für CPU/RAM/Traffic)<select class="guest">${guestOptions(t.guest)}</select></label>
+          <label>IP:port to check (optional)<input type="text" class="check" value="${esc(t.check || '')}" placeholder="192.168.1.30:8096"></label>
+          <label>Proxmox guest (for CPU/memory/traffic)<select class="guest">${guestOptions(t.guest)}</select></label>
         </div>
-        <div class="row end"><span class="hint">Ohne IP:Port wird die Adresse aus der URL geprüft.</span>
-          <span><button class="ghost mini up" title="Nach oben">↑</button> <button class="ghost mini down" title="Nach unten">↓</button> <button class="danger mini remove">Entfernen</button></span></div>
+        <div class="row end"><span class="hint">Without IP:port, the URL's address is checked.</span>
+          <span><button class="ghost mini up" title="Move up">↑</button> <button class="ghost mini down" title="Move down">↓</button> <button class="danger mini remove">Remove</button></span></div>
       </div></div>`;
   const q = (c) => el.querySelector(c);
   let icon = t.icon || '';
@@ -450,7 +450,7 @@ function tileCard(t) {
   };
   q('.emoji').addEventListener('input', () => { icon = q('.emoji').value.trim(); paint(); });
   q('.name').addEventListener('input', paint);
-  q('.file').addEventListener('change', async () => { const f = q('.file').files[0]; if (!f) return; try { icon = await shrink(f); paint(); } catch (e) { alert('Das Bild konnte nicht gelesen werden.'); } });
+  q('.file').addEventListener('change', async () => { const f = q('.file').files[0]; if (!f) return; try { icon = await shrink(f); paint(); } catch (e) { alert('The image could not be read.'); } });
   q('.remove').onclick = () => el.remove();
   q('.up').onclick = () => el.previousElementSibling && el.parentNode.insertBefore(el, el.previousElementSibling);
   q('.down').onclick = () => el.nextElementSibling && el.parentNode.insertBefore(el.nextElementSibling, el);
@@ -477,14 +477,14 @@ $('tilesFromApps').onclick = () => {
 
 // ---------- live feed ----------
 const HOOK_APPS = [
-  ['Radarr', 'Settings → Connect → + → Webhook. URL einfügen, Methode POST; Auslöser On Grab, On File Import, On File Upgrade, On Health Issue, On Health Restored.'],
-  ['Sonarr', 'Wie Radarr: Settings → Connect → + → Webhook.'],
+  ['Radarr', 'Settings → Connect → + → Webhook. Paste the URL, method POST; triggers On Grab, On File Import, On File Upgrade, On Health Issue, On Health Restored.'],
+  ['Sonarr', 'Like Radarr: Settings → Connect → + → Webhook.'],
   ['Prowlarr', 'Settings → Connect → + → Webhook (Grab, Health).'],
   ['Lidarr', 'Settings → Connect → + → Webhook.'],
   ['Readarr', 'Settings → Connect → + → Webhook.'],
-  ['Bazarr', 'Settings → Notifications → Apprise-URL hinzufügen (json:// statt http://, jsons:// statt https://).', true],
-  ['SABnzbd', 'Config → Notifications → Apprise aktivieren, URL eintragen (json:// bzw. jsons://), „Job finished“ und „Job failed“ anhaken.', true],
-  ['Jellyfin', 'Plugin „Webhook“ → Generic Destination (Vorlage unten).'],
+  ['Bazarr', 'Settings → Notifications → add an Apprise URL (json:// instead of http://, jsons:// instead of https://).', true],
+  ['SABnzbd', 'Config → Notifications → enable Apprise, enter the URL (json:// or jsons://), tick "Job finished" and "Job failed".', true],
+  ['Jellyfin', 'Plugin "Webhook" → Generic Destination (template below).'],
 ];
 function hookUrl(app, apprise) {
   const base = $('hookBase').value.replace(/\/$/, '');
@@ -497,43 +497,43 @@ function renderHooks() {
   if (!has) return;
   $('hookRows').innerHTML = HOOK_APPS.map(([name, how, apprise]) => {
     const u = hookUrl(name, apprise);
-    return `<div class="hookrow"><b>${esc(name)}</b><code>${esc(u)}</code><button class="ghost mini copy" data-u="${esc(u)}">Kopieren</button><span class="how">${esc(how)}</span></div>`;
+    return `<div class="hookrow"><b>${esc(name)}</b><code>${esc(u)}</code><button class="ghost mini copy" data-u="${esc(u)}">Copy</button><span class="how">${esc(how)}</span></div>`;
   }).join('');
-  $('curlExample').textContent = `curl -X POST ${hookUrl('Backup')} \\\n  -H 'Content-Type: application/json' \\\n  -d '{"text": "Backup fertig", "kind": "info", "level": "success"}'`;
+  $('curlExample').textContent = `curl -X POST ${hookUrl('Backup')} \\\n  -H 'Content-Type: application/json' \\\n  -d '{"text": "Backup done", "kind": "info", "level": "success"}'`;
 }
 $('hookRows').addEventListener('click', async (e) => {
   const b = e.target.closest('.copy');
   if (!b) return;
-  try { await navigator.clipboard.writeText(b.dataset.u); b.textContent = 'Kopiert ✓'; } catch { b.textContent = 'Bitte markieren'; }
-  setTimeout(() => { b.textContent = 'Kopieren'; }, 1500);
+  try { await navigator.clipboard.writeText(b.dataset.u); b.textContent = 'Copied ✓'; } catch { b.textContent = 'Please select it'; }
+  setTimeout(() => { b.textContent = 'Copy'; }, 1500);
 });
 $('hookBase').addEventListener('change', renderHooks);
 $('hookTest').onclick = async () => {
-  setStatus($('hookStatus'), 'busy', 'Sende …');
+  setStatus($('hookStatus'), 'busy', 'Sending …');
   const r = await api('/setup/test', { what: 'hook', source: 'Radarr' });
-  setStatus($('hookStatus'), r.ok ? 'ok' : 'err', r.ok ? '✓ Gesendet: im Büro erscheint jetzt eine Nachricht von Radarr' : '✕ ' + r.error);
+  setStatus($('hookStatus'), r.ok ? 'ok' : 'err', r.ok ? '✓ Sent: a message from Radarr now shows up in the office' : '✕ ' + r.error);
 };
 $('gameReset').onclick = async () => {
-  if (!confirm('Alle Punkte, Level, Abzeichen und den Feed zurücksetzen?')) return;
+  if (!confirm('Reset all points, levels, badges and the feed?')) return;
   const r = await api('/api/game/reset', {});
-  setStatus($('hookStatus'), r.ok ? 'ok' : 'err', r.ok ? '✓ Zurückgesetzt' : '✕ ' + r.error);
+  setStatus($('hookStatus'), r.ok ? 'ok' : 'err', r.ok ? '✓ Reset' : '✕ ' + r.error);
 };
 
 // ---------- updates ----------
-for (let h = 0; h < 24; h++) $('updHour').insertAdjacentHTML('beforeend', `<option value="${h}">${String(h).padStart(2, '0')}:00 Uhr</option>`);
+for (let h = 0; h < 24; h++) $('updHour').insertAdjacentHTML('beforeend', `<option value="${h}">${String(h).padStart(2, '0')}:00</option>`);
 let updTimer = null, upd = null;
-const RESULTS = { succeeded: ['ok', '✓ Update auf %s installiert.'], rolled_back: ['err', '↩ Die neue Version startete nicht sauber; %f läuft wieder.'],
-  failed: ['err', '✕ Update fehlgeschlagen. Die bisherige Version läuft weiter.'], refused: ['err', '✕ Update abgelehnt, es wurde nichts geändert.'],
-  attention: ['err', '⚠ Update braucht Hilfe: bitte im Container „systemctl status media-server-dashboard“ prüfen.'] };
+const RESULTS = { succeeded: ['ok', '✓ Updated to %s.'], rolled_back: ['err', '↩ The new version didn\'t start cleanly; %f is running again.'],
+  failed: ['err', '✕ The update failed. The previous version keeps running.'], refused: ['err', '✕ The update was refused; nothing was changed.'],
+  attention: ['err', '⚠ The update needs attention: check "systemctl status media-server-dashboard" in the container.'] };
 function renderUpdates(u) {
   upd = u;
-  $('updVersion').innerHTML = `Installiert: <b>${esc(u.version)}</b>${u.repo ? ` · Quelle <a href="https://github.com/${esc(u.repo)}/releases" target="_blank" rel="noopener" style="color:var(--s1)">${esc(u.repo)}</a> · Kanal ${esc(u.channel)}` : ''}`;
+  $('updVersion').innerHTML = `Installed: <b>${esc(u.version)}</b>${u.repo ? ` · source <a href="https://github.com/${esc(u.repo)}/releases" target="_blank" rel="noopener" style="color:var(--s1)">${esc(u.repo)}</a> · channel ${esc(u.channel)}` : ''}`;
   $('updManaged').hidden = !u.managed; $('updUnmanaged').hidden = u.managed;
   if (!u.managed) {
     const n = u.notice;
-    $('updUnmanaged').innerHTML = (n ? `<b>Version ${esc(n.version)} ist erschienen.</b> <a href="${esc(n.url)}" target="_blank" rel="noopener" style="color:var(--s1)">Was ist neu?</a><br>` : '')
-      + (u.mode === 'docker' ? 'Im Docker-Container aktualisierst du so: <code>docker compose pull &amp;&amp; docker compose up -d</code> (Synology: Container Manager → Projekt → Aktion → Erstellen).'
-        : 'Diese Installation läuft ohne den Update-Dienst. Mit dem LXC-Installer (install-in-container.sh) gibt es Updates per Klick; sonst: neue Version holen und den Dienst neu starten.');
+    $('updUnmanaged').innerHTML = (n ? `<b>Version ${esc(n.version)} is out.</b> <a href="${esc(n.url)}" target="_blank" rel="noopener" style="color:var(--s1)">What's new?</a><br>` : '')
+      + (u.mode === 'docker' ? 'To update the Docker container: <code>docker compose pull &amp;&amp; docker compose up -d</code> (Synology: Container Manager → Project → Action → Build).'
+        : 'This installation runs without the update service. Installs made with the LXC installer (install-in-container.sh) update with one click; otherwise get the new version and restart the service.');
     return;
   }
   $('updRepo').textContent = u.repo;
@@ -550,27 +550,27 @@ function renderUpdates(u) {
   $('updResult').hidden = running || !res || u.acked === last.id;
   if (res && !running) {
     $('updResult').innerHTML = `<span class="status ${res[0]}">${esc(res[1].replace('%s', last.to).replace('%f', last.from))}</span>${last.error ? `<span class="hint">${esc(last.error)}</span>` : ''}
-      <span class="hint">${esc(last.requested_by || '')} · ${last.finished ? new Date(last.finished * 1000).toLocaleString() : ''}</span><div class="row"><button class="ghost mini" id="updAck">Gelesen</button></div>`;
+      <span class="hint">${esc(last.requested_by || '')} · ${last.finished ? new Date(last.finished * 1000).toLocaleString() : ''}</span><div class="row"><button class="ghost mini" id="updAck">Dismiss</button></div>`;
     $('updAck').onclick = async () => { await api('/api/update/ack', { id: last.id }); renderUpdates({ ...upd, acked: last.id }); };
   }
   const a = st.available;
   $('updAvail').hidden = running || !a;
   if (a && !running) {
-    $('updAvail').innerHTML = `<b>${esc(a.name || 'Version ' + a.version)}</b><span class="hint">Signatur geprüft ✓${a.published ? ' · ' + new Date(a.published).toLocaleDateString() : ''} · <a href="${esc(a.url)}" target="_blank" rel="noopener" style="color:var(--s1)">auf GitHub</a></span>
-      <div class="notes">${esc(a.notes || 'Keine Notizen.')}</div>
-      <div class="row"><input type="password" id="updPw" placeholder="Dein Passwort zur Bestätigung" autocomplete="current-password" style="flex:1;min-width:180px"><button id="updInstall">Version ${esc(a.version)} installieren</button></div><span class="status" id="updInstallStatus"></span>`;
+    $('updAvail').innerHTML = `<b>${esc(a.name || 'Version ' + a.version)}</b><span class="hint">signature checked ✓${a.published ? ' · ' + new Date(a.published).toLocaleDateString() : ''} · <a href="${esc(a.url)}" target="_blank" rel="noopener" style="color:var(--s1)">on GitHub</a></span>
+      <div class="notes">${esc(a.notes || 'No notes.')}</div>
+      <div class="row"><input type="password" id="updPw" placeholder="Your password to confirm" autocomplete="current-password" style="flex:1;min-width:180px"><button id="updInstall">Install version ${esc(a.version)}</button></div><span class="status" id="updInstallStatus"></span>`;
     $('updInstall').onclick = async () => {
-      setStatus($('updInstallStatus'), 'busy', 'Wird angestoßen …');
+      setStatus($('updInstallStatus'), 'busy', 'Starting …');
       const r = await api('/api/update/install', { version: a.version, password: $('updPw').value });
-      setStatus($('updInstallStatus'), r.ok ? 'ok' : 'err', r.ok ? '✓ Das Update startet gleich.' : '✕ ' + r.error);
+      setStatus($('updInstallStatus'), r.ok ? 'ok' : 'err', r.ok ? '✓ The update starts in a moment.' : '✕ ' + r.error);
       if (r.ok) pollUpdates(true);
     };
   }
   const ref = st.refused || [];
   $('updRefused').hidden = !ref.length;
-  $('updRefused').innerHTML = ref.map((x) => `Nicht installierbar: ${esc(x.version)} – ${esc(x.reason)}`).join('<br>');
+  $('updRefused').innerHTML = ref.map((x) => `Can't be installed: ${esc(x.version)} – ${esc(x.reason)}`).join('<br>');
   setStatus($('updCheckStatus'), st.check_error ? 'err' : st.state === 'checking' || u.pending ? 'busy' : 'ok',
-    st.check_error ? '✕ ' + st.check_error : u.pending ? 'Anfrage liegt beim Update-Dienst, er startet gleich …' : st.state === 'checking' ? 'Suche …' : st.checked_at ? `Zuletzt gesucht: ${new Date(st.checked_at * 1000).toLocaleString()}${a ? '' : ' · aktuell'}` : '');
+    st.check_error ? '✕ ' + st.check_error : u.pending ? 'Request sent to the update service, it starts in a moment …' : st.state === 'checking' ? 'Checking …' : st.checked_at ? `Last checked: ${new Date(st.checked_at * 1000).toLocaleString()}${a ? '' : ' · up to date'}` : '');
 }
 async function pollUpdates(fast) {
   clearTimeout(updTimer);
@@ -591,24 +591,24 @@ $('updHour').addEventListener('change', saveUpdSettings);
 // ---------- load and save ----------
 function load(c) {
   cfg = c;
-  $('heading').textContent = c.setup_done ? 'Einstellungen' : 'Einrichtung';
+  $('heading').textContent = c.setup_done ? 'Settings' : 'Setup';
   $('back').hidden = !c.setup_done;
   $('s-token').dataset.skip = '1';
   if (!c.setup_done) $('s-token').removeAttribute('data-skip');
   $('title').value = c.title;
   $('user').value = c.user;
-  $('pwHint').innerHTML = c.setup_done ? '<span class="hint">(leer lassen = unverändert)</span>' : '';
+  $('pwHint').innerHTML = c.setup_done ? '<span class="hint">(leave empty to keep it)</span>' : '';
   document.querySelector(`input[name=addr][value=${c.domain ? 'domain' : 'ip'}]`).checked = true;
   document.querySelector(`input[name=tls][value=${c.tls === 'internal' ? 'internal' : 'public'}]`).checked = true;
   $('domain').value = c.domain;
   $('ipAccess').checked = c.ip_access !== false;
-  $('ipHint').textContent = `http://${c.lan || '<IP des Containers>'}${c.caddy ? '' : ':' + c.port}`;
+  $('ipHint').textContent = `http://${c.lan || '<container IP>'}${c.caddy ? '' : ':' + c.port}`;
   $('noCaddy').hidden = c.caddy;
   syncAddr();
   const p = c.proxmox;
   $('pveOn').checked = !!p.url || !c.setup_done;
   $('pveUrl').value = p.url; $('pveTokenId').value = p.token_id; $('pveVerify').checked = p.verify_tls !== false; $('pveCa').value = p.ca_file;
-  $('pveSecretHint').innerHTML = p.has_secret ? '<span class="hint">(gespeichert – leer lassen zum Behalten)</span>' : '';
+  $('pveSecretHint').innerHTML = p.has_secret ? '<span class="hint">(saved – leave empty to keep it)</span>' : '';
   if (p.node) $('pveNode').innerHTML = `<option selected>${esc(p.node)}</option>`;
   syncPve();
   if (p.url && p.token_id && p.has_secret) testPve();
@@ -654,15 +654,15 @@ function collect() {
 
 function renderSummary() {
   const d = collect();
-  const on = Object.entries(d.apps).filter(([, a]) => a.enabled).map(([k]) => cfg.builtin[k].name).concat(d.custom_apps.map((a) => a.name || '(ohne Name)'));
+  const on = Object.entries(d.apps).filter(([, a]) => a.enabled).map(([k]) => cfg.builtin[k].name).concat(d.custom_apps.map((a) => a.name || '(no name)'));
   const rows = [
-    ['Titel', d.title || 'Media Server Dashboard'], ['Benutzer', d.user], ['Passwort', d.password ? 'neu gesetzt' : 'unverändert'],
-    ['Adresse', d.domain ? `https://${d.domain} (${d.tls === 'internal' ? 'interne CA' : "Let's Encrypt"})${d.ip_access ? ' + http://IP' : ''}` : 'http://IP'],
-    ['Proxmox', d.proxmox.url ? `${d.proxmox.url} · Node ${d.proxmox.node}` : 'nicht angebunden'],
-    ['Laufwerke', d.proxmox.url ? (d.storages.join(', ') || 'alle') : '–'], ['Überwachte Gäste', d.watch_guests.join(', ') || '–'],
-    ['Apps', on.join(', ') || 'keine'],
-    ['Live-Feed', `Gamification ${d.game.enabled ? 'an' : 'aus'}${d.new_webhook_token ? ' · neue Webhook-Adresse' : ''}`],
-    ['Startseite', d.home.enabled ? `${d.home.side === 'left' ? 'links' : 'rechts'} vom Büro · ${d.home.layout === 'table' ? 'Tabelle' : 'Kacheln'} · ${d.home.tiles.length} Kachel(n)${d.home.start ? ' · nach Login' : ''}` : 'aus'],
+    ['Title', d.title || 'Media Server Dashboard'], ['User', d.user], ['Password', d.password ? 'new' : 'unchanged'],
+    ['Address', d.domain ? `https://${d.domain} (${d.tls === 'internal' ? 'internal CA' : "Let's Encrypt"})${d.ip_access ? ' + http://IP' : ''}` : 'http://IP'],
+    ['Proxmox', d.proxmox.url ? `${d.proxmox.url} · Node ${d.proxmox.node}` : 'not connected'],
+    ['Storages', d.proxmox.url ? (d.storages.join(', ') || 'all') : '–'], ['Watched guests', d.watch_guests.join(', ') || '–'],
+    ['Apps', on.join(', ') || 'none'],
+    ['Live feed', `gamification ${d.game.enabled ? 'on' : 'off'}${d.new_webhook_token ? ' · new webhook address' : ''}`],
+    ['Start page', d.home.enabled ? `${d.home.side === 'left' ? 'left' : 'right'} of the office · ${d.home.layout === 'table' ? 'table' : 'tiles'} · ${d.home.tiles.length} tile(s)${d.home.start ? ' · after sign-in' : ''}` : 'off'],
   ];
   $('summary').innerHTML = rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
 }
@@ -671,9 +671,9 @@ $('save').onclick = async () => {
   $('save').disabled = true;
   $('error').textContent = '';
   const r = await api('/setup/save', collect());
-  if (!r.ok) { $('save').disabled = false; $('error').textContent = r.error || 'Speichern fehlgeschlagen'; return; }
+  if (!r.ok) { $('save').disabled = false; $('error').textContent = r.error || 'Saving failed'; return; }
   $('error').style.color = 'var(--muted)';
-  $('error').textContent = 'Gespeichert. Der Dienst startet neu …';
+  $('error').textContent = 'Saved. The service restarts …';
   // Wait for the restart, then go to the new address (the domain may take a moment to get its certificate).
   const target = new URL(r.url, location.href);
   const sameOrigin = target.origin === location.origin;
@@ -682,7 +682,7 @@ $('save').onclick = async () => {
     try { if ((await fetch('/healthz', { cache: 'no-store' })).ok && i > 1) break; } catch (e) { /* still restarting */ }
   }
   if (sameOrigin) location.href = '/login';
-  else { $('error').innerHTML = `Fertig. Weiter zu <a href="${esc(target.href)}login" style="color:var(--s1)">${esc(target.href)}</a> (das Zertifikat kann beim ersten Aufruf einen Moment brauchen).`; }
+  else { $('error').innerHTML = `Done. Continue at <a href="${esc(target.href)}login" style="color:var(--s1)">${esc(target.href)}</a> (the certificate may take a moment on the first visit).`; }
 };
 
 // Signed in already (settings) or first run (needs the token)?
