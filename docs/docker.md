@@ -64,6 +64,21 @@ Nginx Proxy Manager, Traefik, Caddy or Synology: just forward to `http://<host>:
 - **Important for the live feed:** the proxy must not buffer Server-Sent Events (`/api/stream`). Nginx honours the `X-Accel-Buffering: no` header the dashboard sends; Traefik and Caddy need nothing.
 - Set `MSD_TRUSTED_PROXIES` to the address the proxy connects from (with port mapping usually the gateway of the Docker network, e.g. `172.18.0.1`; `docker network inspect <network>` shows it). Then the login lockout hits the real visitor instead of the proxy, and the login cookie is marked `Secure` over HTTPS.
 
+### Nginx Proxy Manager
+
+Add a proxy host with the domain, scheme `http`, and as forward hostname/port:
+
+| Dashboard runs … | Forward hostname | Forward port |
+|---|---|---|
+| in the LXC from the Proxmox installer | the container's IP | **80** (Caddy; the dashboard itself only listens on 127.0.0.1:8900) |
+| in Docker on another host | that host's IP | 8900 |
+| in Docker next to NPM, same Docker network | `media-server-dashboard` | 8900 |
+| in Docker next to NPM, different networks | the host's LAN IP (not `localhost`, which is NPM itself) | 8900 |
+
+A **502 Bad Gateway** means NPM can't reach that address: usually port 8900 on the LXC (use 80), `localhost`
+as hostname, or `https` as scheme. Under *Advanced*, add `proxy_buffering off;` so the live feed arrives at
+once. With the LXC, choose "By IP address only" in the wizard, since NPM does the HTTPS.
+
 ## Updates
 
 Settings → Updates says when a new version is out. To update:

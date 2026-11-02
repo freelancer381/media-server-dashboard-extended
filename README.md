@@ -1,6 +1,6 @@
 # Media Server Dashboard · Extended
 
-A dashboard for a homelab media stack (Radarr, Sonarr, Prowlarr, Bazarr, SABnzbd and more) plus a 3D
+A dashboard for a homelab media stack (Radarr, Sonarr, Prowlarr, Bazarr, SABnzbd or NZBGet, and more) plus a 3D
 office where your apps are the employees. This edition runs on **Proxmox (LXC)**, in **Docker** and on
 a **Synology**, and watches everything over the network.
 
@@ -19,7 +19,8 @@ a **Synology**, and watches everything over the network.
 - **Team board (gamification):** XP, levels and badges for every worker, today's numbers, a leaderboard and the days without errors. Can be switched off.
 - **Start page** beside the office (left or right, tiles or a table): your own links with icons, online checks by IP:port and, for linked Proxmox guests, CPU, memory, traffic and uptime.
 - **Proxmox:** host stats, storages and the state of containers and VMs through the Proxmox API, with a read-only token.
-- **Setup wizard** (`/setup`, later ⚙ Settings): user, address (IP or a domain with HTTPS), Proxmox, apps with connection tests, custom apps with presets (Lidarr, Readarr, Whisparr, Jellyseerr, Jellyfin, Plex, Tautulli, qBittorrent), start page, live feed and updates.
+- **Download clients:** SABnzbd (API key) or NZBGet (JSON-RPC with user and password): speed, queue, totals and finished or failed downloads in the feed.
+- **Setup wizard** (`/setup`, later ⚙ Settings as tabs with a save bar): user, address (IP or a domain with HTTPS), Proxmox, apps with connection tests, custom apps with presets (Lidarr, Readarr, Whisparr, Jellyseerr, Jellyfin, Plex, Tautulli, qBittorrent), start page, live feed and updates.
 - **One-click updates** (LXC): only releases signed by this repository's release workflow are installed, with a backup, a health check and an automatic rollback. Docker and Synology update through the signed image.
 
 Python standard library only, no build step, no accounts, no analytics.
@@ -51,6 +52,7 @@ addresses, with instructions per app, are under **Settings → Live feed**, read
 
 - **Radarr, Sonarr, Prowlarr, Lidarr, Readarr:** Settings → Connect → Webhook, URL `…/hook/<token>/Radarr`
 - **Bazarr, SABnzbd:** notifications through Apprise with `json://…/hook/<token>/Bazarr`
+- **NZBGet:** the extension in [`extras/nzbget/DashboardNotify`](extras/nzbget/DashboardNotify) (copy it into NZBGet's scripts folder, paste the URL as its WebhookUrl)
 - **Jellyfin:** Webhook plugin, generic destination (template in the settings)
 - **Your own scripts:** `curl -X POST …/hook/<token>/Backup -H 'Content-Type: application/json' -d '{"text": "Backup done"}'`
 

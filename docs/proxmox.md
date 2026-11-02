@@ -49,6 +49,13 @@ Open `http://<container-ip>/setup`, enter the setup token, then:
 4. **Apps:** tick them, enter the URL (as the container sees it, e.g. `http://192.168.1.21:7878`) and the API key, "Test".
 5. **Start page**, **Live feed** (webhook addresses for the apps), **Done** → Save.
 
+## Behind Nginx Proxy Manager or another proxy
+
+Point the proxy at the container's IP on port **80** (Caddy), not 8900: the dashboard only listens on
+127.0.0.1:8900 inside the container, so port 8900 gives a 502 Bad Gateway. Choose "By IP address only" in
+the wizard (your proxy does the HTTPS) and add `proxy_buffering off;` for the live feed. See
+[docker.md](docker.md#nginx-proxy-manager) for the details.
+
 ## Updates
 
 **Settings → Updates**: "Check for updates" shows the newest signed release with its notes. Confirm

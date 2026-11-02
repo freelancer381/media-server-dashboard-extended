@@ -24,6 +24,7 @@ body::before { content: ''; position: fixed; inset: 0; z-index: -1; background:
 header { display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; margin-bottom: 8px; padding: 0 4px; }
 h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -.01em; }
 header a { margin-left: auto; color: var(--text); text-decoration: none; font-size: 13px; padding: 6px 14px; border-radius: 12px; }
+header a + a { margin-left: 0; }
 #summary { color: var(--muted); font-size: 13px; }
 .hint { position: absolute; left: 0; right: 0; bottom: 6px; color: var(--muted); font-size: 12px; text-align: center; pointer-events: none; }
 .glass, #tip { background: var(--glass); border: 1px solid var(--edge); -webkit-backdrop-filter: blur(28px) saturate(170%); backdrop-filter: blur(28px) saturate(170%); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .16), 0 10px 30px rgba(0, 0, 0, .22); }
@@ -118,6 +119,11 @@ table.home .icon { width: 22px; height: 22px; font-size: 14px; border-radius: 6p
 .conn { font-size: 12px; padding: 4px 10px; border-radius: 10px; background: rgba(250, 178, 25, .18); color: #fcd27a; border: 1px solid rgba(250, 178, 25, .35); }
 .conn[hidden] { display: none; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+.update-link { color: var(--text); text-decoration: none; font-size: 13px; font-weight: 600; padding: 6px 14px; border-radius: 12px; border-color: rgba(106, 168, 255, .55) !important; transition: transform .15s, background .15s; }
+.update-link:hover, .update-link:focus-visible { transform: translateY(-1px); background: rgba(106, 168, 255, .22); }
+.update-link.new { background: linear-gradient(135deg, rgba(57, 135, 229, .45), rgba(162, 89, 255, .35)); animation: glowUp 2.4s ease-in-out infinite; }
+.update-link.bad { border-color: rgba(255, 95, 87, .6) !important; background: rgba(255, 95, 87, .18); }
+@keyframes glowUp { 50% { box-shadow: 0 0 0 4px rgba(106, 168, 255, .18), 0 0 18px rgba(106, 168, 255, .35); } }
 #toasts { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 50; display: grid; gap: 8px; pointer-events: none; }
 .toast { padding: 10px 16px; border-radius: 14px; background: linear-gradient(135deg, rgba(246, 197, 68, .95), rgba(255, 159, 67, .95)); color: #2a1a00; font-weight: 700; font-size: 14px; box-shadow: 0 10px 30px rgba(0, 0, 0, .35); animation: pop .3s ease-out; }
 #scene canvas { display: block; width: 100%; height: 100%; cursor: grab; }
@@ -160,7 +166,7 @@ table.home .icon { width: 22px; height: 22px; font-size: 14px; border-radius: 6p
 </head>
 <body>
 <div id="page">
-  <header><h1>The Office</h1><span id="summary"></span><span class="conn" id="conn" role="status" hidden></span><a class="glass" href="/">← Dashboard</a></header>
+  <header><h1>The Office</h1><span id="summary"></span><span class="conn" id="conn" role="status" hidden></span><a id="updateLink" class="glass update-link" href="/setup#updates" hidden></a><a class="glass" href="/">← Dashboard</a></header>
   <div id="stage">
     <div id="scene"><div id="labels"></div><div class="hint">Drag to turn the room · scroll or pinch to zoom</div>
       <section id="feed" class="glass" aria-label="Live feed">
@@ -655,7 +661,7 @@ const desks = DESKS.map(([x, z], i) => {
   for (const sx of [-0.32, 0.32]) { rbox(0.06, 0.04, 0.32, 0.02, '#4a4f61', sx, 0.66, 0.05, chair); cyl(0.015, 0.015, 0.16, '#4a4f61', sx, 0.58, 0.12, chair, 8); }
   return { screenMat };
 });
-// parcels waiting beside SABnzbd's desk
+// parcels waiting beside the download client's desk
 const parcels = [];
 for (let i = 0; i < 12; i++) {
   const layer = Math.floor(i / 4), kk = i % 4;
@@ -970,6 +976,7 @@ const STAFF = {
   Bazarr: { color: '#a98cf0', trim: '#f2c94c', pants: '#2c2c3a', hair: '#e2c26b', style: 'bun', skin: '#e8b994', extra: 'bowtie', eye: '#3f9a66', quips: ['Subtitles all done', 'Nothing to translate', 'Mmm, coffee'] },
   Prowlarr: { color: '#ef8fb5', trim: '#ffffff', pants: '#34405e', hair: '#2b2b38', style: 'short', skin: '#7a4d32', extra: 'beanie', eye: '#4a3020', quips: ['Indexers all quiet', 'Nobody asked me anything', 'Match point!'] },
   SABnzbd: { color: '#a8d65a', trim: '#5c8a1f', pants: '#3d3a52', hair: '#9c3d2a', style: 'spiky', skin: '#f0c9a6', extra: 'cap', eye: '#5d7f34', quips: ['Queue is empty ☕', 'Bandwidth on standby', 'This bean bag is great'] },
+  NZBGet: { color: '#5fb7c9', trim: '#2b7a8c', pants: '#3d3a52', hair: '#3a2a22', style: 'spiky', skin: '#f0c9a6', extra: 'headphones', eye: '#5d7f34', quips: ['Queue is empty ☕', 'Bandwidth on standby', 'This bean bag is great'] },
 };
 const BREAKS = [
   { at: [5.55, -7.35], face: 0, pose: 'couch' },
@@ -1360,7 +1367,28 @@ const xy = ([x, y]) => ({ x, y });
 // ---------- live data ----------
 const NO_DESK = { screenMat: new THREE.MeshStandardMaterial() };
 let first = true;
+// A newer release, an update running, or the result of the last one: shown on the dashboard and in the office.
+function updateBanner(d) {
+  const up = d.update || {}, upLast = up.last || {}, ul = $('updateLink');
+  if (!ul) return;
+  const RESULT = { succeeded: '✓ Updated to ' + upLast.to, rolled_back: '↩ Update rolled back', failed: '✕ Update failed', refused: '✕ Update refused', attention: '⚠ Update needs attention' };
+  const text = up.state === 'running' ? '⏳ Updating …' : !up.acked && RESULT[upLast.result] ? RESULT[upLast.result] : up.available ? `⬆ Version ${up.available} available` : '';
+  ul.hidden = !text;
+  ul.textContent = text;
+  ul.className = 'glass update-link' + (up.available && up.state !== 'running' ? ' new' : '') + (/failed|refused|attention|rolled/.test(upLast.result || '') && !up.acked ? ' bad' : '');
+  ul.title = up.available ? 'Open Settings → Updates' : '';
+  // a one-time heads-up per version, then the link stays
+  if (up.available) {
+    let seen = '';
+    try { seen = localStorage.getItem('updateSeen') || ''; } catch { /* storage blocked */ }
+    if (seen !== up.available) {
+      try { localStorage.setItem('updateSeen', up.available); } catch { /* fine */ }
+      if (typeof toast === 'function') toast(`⬆ Version ${up.available} is available · Settings → Updates`);
+    }
+  }
+}
 function render(d) {
+  updateBanner(d);
   d.services.forEach((svc, i) => {
     const p = people[svc.name] || (people[svc.name] = makePerson(svc.name, Object.keys(people).length));
     const bad = svc.issues.some((a) => a.level === 'error');

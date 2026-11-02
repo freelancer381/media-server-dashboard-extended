@@ -11,6 +11,7 @@ server; only the fields picked out below reach the browser.
 
 Settings live in $MSD_DATA/config.json (default: next to this file), written by the setup wizard.
 """
+import base64
 import hashlib
 import hmac
 import html
@@ -93,6 +94,7 @@ BUILTIN = {
     "prowlarr": {"name": "Prowlarr", "kind": "prowlarr", "api": "v1", "port": 9696},
     "bazarr": {"name": "Bazarr", "kind": "bazarr", "api": "", "port": 6767},
     "sabnzbd": {"name": "SABnzbd", "kind": "sabnzbd", "api": "", "port": 8080},
+    "nzbget": {"name": "NZBGet", "kind": "nzbget", "api": "", "port": 6789},
 }
 
 
@@ -107,6 +109,7 @@ def make_app(key, a, base=None):
         "auth": a.get("auth") or ("query" if base.get("kind") == "sabnzbd" else "header"),
         "auth_name": a.get("auth_name") or ("X-API-KEY" if base.get("kind") == "bazarr" else "X-Api-Key"),
         "health_path": a.get("health_path") or "/",
+        "username": a.get("username") or "",  # NZBGet signs in with user and password
         # Where the app's own web interface opens from the office (the API address unless set separately).
         "web_url": (a.get("web_url") or url).rstrip("/"),
     }
@@ -116,7 +119,8 @@ def configured_apps(cfg):
     apps = []
     for key, base in BUILTIN.items():
         a = (cfg.get("apps") or {}).get(key) or {}
-        if a.get("url") and a.get("api_key") and a.get("enabled", True):
+        # NZBGet may run without a password; every other app needs its API key.
+        if a.get("url") and (a.get("api_key") or key == "nzbget") and a.get("enabled", True):
             apps.append(make_app(key, a, base))
     for i, a in enumerate(cfg.get("custom_apps") or []):
         if a.get("url") and a.get("name") and a.get("enabled", True):
@@ -126,6 +130,10 @@ def configured_apps(cfg):
 
 APPS = configured_apps(CONFIG)
 BY_KIND = {a["kind"]: a for a in APPS if a["kind"] in BUILTIN}
+# The download client the dashboard's download card, graph and the office's parcel pile follow:
+# SABnzbd if it is set up, otherwise NZBGet. Its state lives in state["sab"] either way.
+DOWNLOADER = BY_KIND.get("sabnzbd") or BY_KIND.get("nzbget")
+DL_NAME = DOWNLOADER["name"] if DOWNLOADER else "SABnzbd"
 
 VENDOR = {"/vendor/three.module.min.js": "three.module.min.js", "/vendor/OrbitControls.js": "OrbitControls.js", "/vendor/RoundedBoxGeometry.js": "RoundedBoxGeometry.js"}  # the 3D office's library, served as-is
 POSTER_HOSTS = ("https://image.tmdb.org/", "https://artworks.thetvdb.com/")
@@ -142,8 +150,9 @@ state = {"system": {}, "services": [], "cinema": {"enabled": False, "profiles": 
          "sab": {"ok": False}, "radarr": {"ok": False}, "sonarr": {"ok": False}, "prowlarr": {"ok": False}, "bazarr": {"ok": False},
          "custom": {}, "activity": {}, "network": {}, "disks": [], "proxmox": {"ok": None, "guests": []}}
 for _k in BUILTIN:  # apps that aren't set up say so, instead of looking broken
-    if _k not in BY_KIND:
-        state["sab" if _k == "sabnzbd" else _k] = {"ok": False, "off": True}
+    if _k not in BY_KIND and _k not in ("sabnzbd", "nzbget"):
+        state[_k] = {"ok": False, "off": True}
+state["sab"] = {"ok": False, "off": not DOWNLOADER, "client": DL_NAME}
 
 
 # ---------- HTTP ----------
@@ -576,14 +585,14 @@ def read_activity():
 
 
 def up_next(name, n=5):
-    """The next downloads in SABnzbd's order, for the popup on a service box. Radarr and Sonarr get only their own."""
-    if name not in ("SABnzbd", "Radarr", "Sonarr"):
+    """The next downloads in the download client's order, for the popup on a service box. Radarr and Sonarr get only their own."""
+    if name not in (DL_NAME, "Radarr", "Sonarr"):
         return []
     sab = state["sab"]
     out = []
     for s in sab.get("queue", []) if sab.get("ok") else []:
         sid = (s.get("id") or "").lower()
-        if name != "SABnzbd" and download_owner.get(sid) != name:
+        if name != DL_NAME and download_owner.get(sid) != name:
             continue
         out.append({"title": download_titles.get(sid) or tidy(s["title"]), "pct": round(s["pct"]), "size": s.get("size")})
         if len(out) == n:
@@ -613,7 +622,7 @@ def tidy(name):
 
 def activity(name):
     """The task an app is busy with, or None when it has nothing to do."""
-    if name == "SABnzbd":
+    if name == DL_NAME:
         sab = state["sab"]
         if not sab.get("ok") or sab["paused"] or not (sab["speed"] > 0 or sab["queueTotal"]):
             return None
@@ -642,7 +651,7 @@ def read_sab():
         failed = app_get(a, "history&limit=1&failed_only=1")["history"].get("noofslots", 0)
         st = app_get(a, "server_stats")
     except FAIL:
-        state["sab"] = {"ok": False}
+        state["sab"] = {"ok": False, "client": a["name"]}
         return
     num = lambda v: float(v or 0)
     ids = {s.get("nzo_id"): html.unescape(s.get("filename") or "") for s in q.get("slots", []) if s.get("nzo_id")}
@@ -664,7 +673,7 @@ def read_sab():
                 LIVE.emit(a["name"], "error", f"download failed: {name} ({livemod.clean(h.get('fail_message'), 120)})", "error")
     sab_seen_set(ids)
     state["sab"] = {
-        "ok": True, "version": q.get("version"), "paused": bool(q.get("paused")),
+        "ok": True, "client": a["name"], "version": q.get("version"), "paused": bool(q.get("paused")),
         "speed": num(q.get("kbpersec")) * 1024, "left": num(q.get("mbleft")) * 1048576, "eta": q.get("timeleft"),
         "queueTotal": q.get("noofslots_total", 0),
         "queue": [{"id": s.get("nzo_id"), "title": html.unescape(s.get("filename") or ""), "pct": num(s.get("percentage")), "left": s.get("timeleft"), "size": s.get("size"), "state": s.get("status")} for s in q.get("slots", [])],
@@ -673,10 +682,92 @@ def read_sab():
     }
 
 
+# ---------- NZBGet: JSON-RPC with user and password ----------
+def nzb_call(a, method, *params, timeout=8):
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    if a.get("username") or a["api_key"]:
+        headers["Authorization"] = "Basic " + base64.b64encode(f"{a.get('username', '')}:{a['api_key']}".encode()).decode()
+    body = json.dumps({"method": method, "params": list(params), "id": 1}).encode()
+    req = urllib.request.Request(a["url"] + "/jsonrpc", data=body, headers=headers)
+    with urllib.request.urlopen(req, timeout=timeout, context=DEFAULT_SSL if a["verify"] else INSECURE_SSL) as r:
+        out = json.load(r)
+    if out.get("error"):
+        raise ValueError(str(out["error"])[:200])
+    return out["result"]
+
+
+def nzb_bytes(d, prefix):
+    """NZBGet splits big numbers into Lo/Hi 32-bit halves."""
+    return ((d.get(prefix + "Hi") or 0) << 32) + (d.get(prefix + "Lo") or 0)
+
+
+def nzb_id(g):
+    """The id Radarr and Sonarr know a download by: their "drone" parameter, or NZBGet's own id."""
+    for prm in g.get("Parameters") or []:
+        if prm.get("Name") == "drone" and prm.get("Value"):
+            return str(prm["Value"])
+    return str(g.get("NZBID"))
+
+
+def clock(seconds):
+    seconds = int(seconds)
+    return f"{seconds // 3600}:{seconds % 3600 // 60:02d}:{seconds % 60:02d}"
+
+
+def read_nzbget():
+    a = BY_KIND.get("nzbget")
+    if not a or DOWNLOADER is not a:
+        return
+    try:
+        st = nzb_call(a, "status")
+        groups = nzb_call(a, "listgroups", 0)
+        hist = nzb_call(a, "history", False)
+        vols = nzb_call(a, "servervolumes")
+        version = nzb_call(a, "version")
+    except FAIL:
+        state["sab"] = {"ok": False, "client": a["name"]}
+        return
+    speed = float(st.get("DownloadRate") or 0)
+    left = nzb_bytes(st, "RemainingSize") or (st.get("RemainingSizeMB") or 0) * 1048576
+    queue = []
+    for g in groups:
+        total, rem = nzb_bytes(g, "FileSize"), nzb_bytes(g, "RemainingSize")
+        queue.append({"id": nzb_id(g), "title": g.get("NZBName") or g.get("NZBNicename") or "", "pct": (total - rem) / total * 100 if total else 0,
+                      "left": clock(rem / speed) if speed and rem else "", "size": f"{total / 1073741824:.1f} GB", "state": (g.get("Status") or "").title()})
+    # Finished downloads for the live feed, as with SABnzbd: what left the queue, looked up in the history.
+    ids = {q["id"]: q["title"] for q in queue}
+    if sab_seen is not None and not LIVE.hooked(a["name"]):
+        done = {nzb_id(h): h for h in hist[:50]}
+        for i in [i for i in sab_seen if i not in ids]:
+            h = done.get(i)
+            if not h:
+                continue
+            name = download_titles.get(i.lower()) or tidy(h.get("Name") or sab_seen[i])
+            status = str(h.get("Status") or "")
+            if status.startswith("SUCCESS"):
+                LIVE.emit(a["name"], "download", f"finished downloading {name}", "success")
+            elif status.startswith("FAILURE"):
+                LIVE.emit(a["name"], "error", f"download failed: {name} ({status.split('/', 1)[-1].lower()})", "error")
+    sab_seen_set(ids)
+    totals = {"day": 0, "week": 0, "month": 0, "total": 0}
+    v = next((x for x in vols if x.get("ServerID") == 0), vols[0] if vols else None)
+    if v:
+        days, slot = v.get("BytesPerDays") or [], int(v.get("DaySlot") or 0)
+        per_day = lambda back: sum(nzb_bytes(days[slot - i], "Size") for i in range(back) if 0 <= slot - i < len(days))
+        totals = {"day": per_day(1), "week": per_day(7), "month": per_day(30), "total": nzb_bytes(v, "TotalSize")}
+    state["sab"] = {
+        "ok": True, "client": a["name"], "version": version, "paused": bool(st.get("DownloadPaused")),
+        "speed": speed, "left": left, "eta": clock(left / speed) if speed and left else "",
+        "queueTotal": len(groups), "queue": queue[:60],
+        "failed": sum(1 for h in hist[:100] if str(h.get("Status") or "").startswith("FAILURE")),
+        "totals": totals,
+    }
+
+
 # ---------- what needs attention ----------
 def app_state(key):
     if key in BUILTIN:
-        return state["sab" if key == "sabnzbd" else key]
+        return state["sab" if key in ("sabnzbd", "nzbget") else key]
     return state["custom"].get(key, {})
 
 
@@ -702,7 +793,7 @@ def alerts():
         elif app_state(s["key"]).get("ok") is False:
             add("error", s["name"], "Reachable, but the API isn't answering: check the URL and API key")
     for a in APPS:
-        if a["kind"] in ("sabnzbd",):
+        if a["kind"] in ("sabnzbd", "nzbget"):
             continue
         s = app_state(a["key"])
         if not s.get("ok"):
@@ -717,9 +808,9 @@ def alerts():
     sab = state["sab"]
     if sab.get("ok"):
         if sab["paused"]:
-            add("warning", "SABnzbd", "Downloads are paused")
+            add("warning", sab.get("client", DL_NAME), "Downloads are paused")
         if sab["failed"]:
-            add("warning", "SABnzbd", f"{sab['failed']} failed download(s) in history")
+            add("warning", sab.get("client", DL_NAME), f"{sab['failed']} failed download(s) in history")
     for d in state["disks"]:
         if d["free"] / d["total"] < 0.1:
             add("warning", "Drives", f"{d['name']} is over 90% full")
@@ -962,7 +1053,7 @@ def public_config():
         "proxmox": {"url": p.get("url", ""), "node": p.get("node", ""), "token_id": p.get("token_id", ""), "has_secret": bool(p.get("token_secret")),
                     "verify_tls": p.get("verify_tls", True), "ca_file": p.get("ca_file", "")},
         "storages": STORAGES, "watch_guests": WATCH_GUESTS,
-        "apps": {k: {"enabled": bool(a.get("url")) and a.get("enabled", True), "url": a.get("url", ""), "web_url": a.get("web_url", ""),
+        "apps": {k: {"enabled": bool(a.get("url")) and a.get("enabled", True), "url": a.get("url", ""), "web_url": a.get("web_url", ""), "username": a.get("username", ""),
                      "has_key": bool(a.get("api_key")), "verify_tls": a.get("verify_tls", True)}
                  for k, a in ((k, (c.get("apps") or {}).get(k) or {}) for k in BUILTIN)},
         "builtin": {k: {"name": b["name"], "port": b["port"]} for k, b in BUILTIN.items()},
@@ -1005,6 +1096,9 @@ def wizard_test(req):
             if not a.get("url"):
                 return {"ok": False, "error": "URL is missing"}
             app = make_app(key or "custom", a, BUILTIN.get(key))
+            if app["kind"] == "nzbget":
+                nzb_call(app, "status")
+                return {"ok": True, "version": nzb_call(app, "version")}
             if app["kind"] == "sabnzbd":
                 v = app_get(app, "version").get("version")
                 app_get(app, "queue&limit=1")["queue"]  # version works without a key; the queue proves the key
@@ -1084,9 +1178,10 @@ def build_config(req):
         if not a.get("enabled"):
             continue
         k = a.get("api_key") or ((old.get("apps") or {}).get(key) or {}).get("api_key", "")
-        if not k:
+        if not k and key != "nzbget":  # NZBGet may run without a password
             raise ValueError(f"{BUILTIN[key]['name']}: API key is missing")
         c["apps"][key] = {"url": clean_url(a.get("url")), "api_key": k, "verify_tls": bool(a.get("verify_tls", True)),
+                          **({"username": a["username"].strip()[:64]} if (a.get("username") or "").strip() else {}),
                           **({"web_url": clean_url(a["web_url"])} if (a.get("web_url") or "").strip() else {})}
 
     c["custom_apps"] = []
@@ -1484,6 +1579,7 @@ if __name__ == "__main__":
             print("watching: " + ", ".join(a["name"] for a in APPS), flush=True)
             looped(5, read_services)
             looped(5, read_sab)
+            looped(5, read_nzbget)
             looped(5, read_radarr)
             looped(5, read_sonarr)
             looped(60, read_prowlarr)

@@ -89,3 +89,78 @@ class Helpers(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NZBGet(unittest.TestCase):
+    """read_nzbget against a fake JSON-RPC server."""
+
+    def setUp(self):
+        import base64
+        import threading
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        self.queue = [{"NZBID": 7, "NZBName": "Dune.2021.2160p", "Status": "DOWNLOADING", "FileSizeLo": 4 * 2**30, "FileSizeHi": 0,
+                       "RemainingSizeLo": 2**30, "RemainingSizeHi": 0, "Parameters": [{"Name": "drone", "Value": "abc123"}]}]
+        self.history = []
+        outer = self
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_POST(self):
+                if self.headers.get("Authorization") != "Basic " + base64.b64encode(b"nzbget:secret").decode():
+                    self.send_response(401)
+                    self.end_headers()
+                    return
+                req = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                res = {"status": {"DownloadRate": 5 * 2**20, "RemainingSizeLo": 2**30, "RemainingSizeHi": 0, "DownloadPaused": False},
+                       "listgroups": outer.queue, "history": outer.history, "version": "24.3",
+                       "servervolumes": [{"ServerID": 0, "DaySlot": 1, "TotalSizeLo": 0, "TotalSizeHi": 2,
+                                          "BytesPerDays": [{"SizeLo": 100, "SizeHi": 0}, {"SizeLo": 2**30, "SizeHi": 0}]}]}[req["method"]]
+                body = json.dumps({"id": req["id"], "result": res}).encode()
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+        self.srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+        self.app = server.make_app("nzbget", {"url": f"http://127.0.0.1:{self.srv.server_port}", "username": "nzbget", "api_key": "secret"}, server.BUILTIN["nzbget"])
+        self.saved = (dict(server.BY_KIND), server.DOWNLOADER, server.sab_seen)
+        server.BY_KIND["nzbget"] = self.app
+        server.DOWNLOADER = self.app
+        server.sab_seen_set(None)
+
+    def tearDown(self):
+        self.srv.shutdown()
+        server.BY_KIND.clear()
+        server.BY_KIND.update(self.saved[0])
+        server.DOWNLOADER = self.saved[1]
+        server.sab_seen_set(self.saved[2])
+
+    def test_queue_speed_and_totals(self):
+        server.read_nzbget()
+        sab = server.state["sab"]
+        self.assertTrue(sab["ok"], sab)
+        self.assertEqual((sab["client"], sab["version"], sab["queueTotal"]), ("NZBGet", "24.3", 1))
+        q = sab["queue"][0]
+        self.assertEqual(q["id"], "abc123")  # the id Radarr/Sonarr know it by
+        self.assertAlmostEqual(q["pct"], 75.0)
+        self.assertEqual(sab["speed"], 5 * 2**20)
+        self.assertEqual(sab["totals"]["day"], 2**30)
+        self.assertEqual(sab["totals"]["week"], 2**30 + 100)
+        self.assertEqual(sab["totals"]["total"], 2 << 32)
+
+    def test_finished_download_reaches_the_feed(self):
+        server.read_nzbget()
+        self.queue.clear()
+        self.history.append({"NZBID": 7, "Name": "Dune.2021.2160p", "Status": "SUCCESS/ALL", "Parameters": [{"Name": "drone", "Value": "abc123"}]})
+        server.read_nzbget()
+        last = server.LIVE.recent(3)
+        self.assertTrue(any(e["source"] == "NZBGet" and e["kind"] == "download" and "Dune (2021)" in e["text"] for e in last), last)
+
+    def test_wrong_password(self):
+        self.app["api_key"] = "nope"
+        server.read_nzbget()
+        self.assertFalse(server.state["sab"]["ok"])
+        self.assertEqual(server.state["sab"]["client"], "NZBGet")

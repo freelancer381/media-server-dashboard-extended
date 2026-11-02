@@ -1,0 +1,26 @@
+{
+  "main": "main.py",
+  "name": "DashboardNotify",
+  "homepage": "https://github.com/lcsfls/media-server-dashboard-extended",
+  "kind": "POST-PROCESSING",
+  "displayName": "Media Server Dashboard",
+  "version": "1.0.0",
+  "author": "Media Server Dashboard Extended",
+  "license": "MIT",
+  "about": "Tells the Media Server Dashboard's live feed when a download finished or failed.",
+  "queueEvents": "",
+  "requirements": ["Python 3"],
+  "description": ["Copy the WebhookUrl from the dashboard: Settings → Live feed → NZBGet."],
+  "options": [
+    {
+      "name": "WebhookUrl",
+      "displayName": "WebhookUrl",
+      "value": "",
+      "description": ["The dashboard's webhook address for NZBGet (http://<dashboard>/hook/<token>/NZBGet)."],
+      "select": []
+    }
+  ],
+  "commands": [],
+  "taskTime": "",
+  "sections": []
+}

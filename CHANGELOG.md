@@ -5,6 +5,11 @@ becomes its GitHub release text, so write it for the people who run the dashboar
 
 ## Unreleased
 
+- NZBGet as a download client next to SABnzbd (JSON-RPC with user and password), with an extension for instant live-feed messages.
+- Settings: tabs instead of the wizard once set up, a save bar on every tab when something changed.
+- "Version X available" on the dashboard and in the office, with a one-time heads-up per version.
+- Docs: Nginx Proxy Manager (and why port 8900 on the LXC gives a 502).
+
 - Office: click a worker, its name tag or its speech bubble to open that app (optional separate browser address per app in the settings).
 - Office: every worker has a place of its own; from the seventh on they work at the whiteboard and get their own break spots, so nobody stands inside anybody else. Called back halfway, workers retrace their steps instead of walking through desks.
 - Office: name tags and bubbles stay inside the view and step aside instead of covering each other; the live feed moved to the empty top-left corner.

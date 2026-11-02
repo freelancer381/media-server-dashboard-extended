@@ -359,6 +359,7 @@ const checked = (box) => [...$(box).querySelectorAll('input:checked')].map((i) =
 
 // ---------- apps ----------
 function builtinCard(key, b, a) {
+  const nzb = key === 'nzbget';  // NZBGet signs in with user and password instead of an API key
   const el = document.createElement('div');
   el.className = 'app' + (a.enabled ? '' : ' off');
   el.dataset.key = key;
@@ -366,13 +367,15 @@ function builtinCard(key, b, a) {
     <div class="body">
       <div class="grid2">
         <label>URL<input type="url" class="url" value="${esc(a.url)}" placeholder="http://192.168.1.x:${b.port}"></label>
-        <label>API key ${a.has_key ? '<span class="hint">(saved – leave empty to keep it)</span>' : ''}<input type="password" class="key" autocomplete="off"></label>
+        ${nzb ? `<label>Username <span class="hint">(Settings → Security → ControlUsername)</span><input type="text" class="user" value="${esc(a.username || '')}" autocomplete="off" spellcheck="false"></label>` : ''}
+        <label>${nzb ? 'Password <span class="hint">(ControlPassword)</span>' : 'API key'} ${a.has_key ? '<span class="hint">(saved – leave empty to keep it)</span>' : ''}<input type="password" class="key" autocomplete="off"></label>
       </div>
       <label>Open in the browser at <span class="hint">(optional, if not the URL above; clicking the worker in the office opens it)</span><input type="url" class="web" value="${esc(a.web_url || '')}" placeholder="https://radarr.home.lan"></label>
       <div class="row"><label class="check"><input type="checkbox" class="verify" ${a.verify_tls !== false ? 'checked' : ''}> Check the certificate (https)</label>
         <button class="ghost test">Test</button><span class="status"></span></div>
     </div>`;
-  wireCard(el, () => ({ key, url: el.querySelector('.url').value.trim(), api_key: el.querySelector('.key').value, verify_tls: el.querySelector('.verify').checked }));
+  wireCard(el, () => ({ key, url: el.querySelector('.url').value.trim(), username: el.querySelector('.user') ? el.querySelector('.user').value.trim() : '',
+    api_key: el.querySelector('.key').value, verify_tls: el.querySelector('.verify').checked }));
   return el;
 }
 function customCard(a) {
@@ -479,7 +482,7 @@ function tileCard(t) {
   return el;
 }
 $('addTile').onclick = () => { const el = tileCard({}); $('tiles').append(el); el.querySelector('.name').focus(); };
-const APP_ICONS = { Radarr: '🎬', Sonarr: '📺', Prowlarr: '🔎', Bazarr: '💬', SABnzbd: '📥', Lidarr: '🎵', Readarr: '📚', Whisparr: '🔞', Jellyfin: '🍿', Plex: '🎞️', Jellyseerr: '🙋', Tautulli: '📊', qBittorrent: '🌊' };
+const APP_ICONS = { Radarr: '🎬', Sonarr: '📺', Prowlarr: '🔎', Bazarr: '💬', SABnzbd: '📥', NZBGet: '📥', Lidarr: '🎵', Readarr: '📚', Whisparr: '🔞', Jellyfin: '🍿', Plex: '🎞️', Jellyseerr: '🙋', Tautulli: '📊', qBittorrent: '🌊' };
 $('tilesFromApps').onclick = () => {
   const have = new Set([...document.querySelectorAll('#tiles .tile')].map((el) => el.read().name.toLowerCase()));
   const list = [...document.querySelectorAll('#builtinApps .app')].filter((el) => el.querySelector('.on').checked)
@@ -503,6 +506,7 @@ const HOOK_APPS = [
   ['Readarr', 'Settings → Connect → + → Webhook.'],
   ['Bazarr', 'Settings → Notifications → add an Apprise URL (json:// instead of http://, jsons:// instead of https://).', true],
   ['SABnzbd', 'Config → Notifications → enable Apprise, enter the URL (json:// or jsons://), tick "Job finished" and "Job failed".', true],
+  ['NZBGet', 'NZBGet has no webhooks of its own: copy extras/nzbget/DashboardNotify.py into its scripts folder, enable it under Extension scripts and paste this URL as its WebhookUrl. Without it the dashboard still notices finished downloads.'],
   ['Jellyfin', 'Plugin "Webhook" → Generic Destination (template below).'],
 ];
 function hookUrl(app, apprise) {
@@ -658,7 +662,8 @@ function load(c) {
 function collect() {
   const apps = {};
   document.querySelectorAll('#builtinApps .app').forEach((el) => {
-    apps[el.dataset.key] = { enabled: el.querySelector('.on').checked, url: el.querySelector('.url').value.trim(), web_url: el.querySelector('.web').value.trim(), api_key: el.querySelector('.key').value, verify_tls: el.querySelector('.verify').checked };
+    apps[el.dataset.key] = { enabled: el.querySelector('.on').checked, url: el.querySelector('.url').value.trim(), web_url: el.querySelector('.web').value.trim(),
+      username: el.querySelector('.user') ? el.querySelector('.user').value.trim() : '', api_key: el.querySelector('.key').value, verify_tls: el.querySelector('.verify').checked };
   });
   const pveOn = $('pveOn').checked;
   return {
