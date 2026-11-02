@@ -5,6 +5,8 @@ becomes its GitHub release text, so write it for the people who run the dashboar
 
 ## Unreleased
 
+## 0.2.1 - 2026-11-02
+
 - Everything is in English now: the setup wizard and settings, the live feed, the start page, update messages, the README and the guides.
 
 - The release workflow now also verifies the container image's signature before publishing.
