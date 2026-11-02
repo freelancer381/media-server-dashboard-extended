@@ -103,7 +103,7 @@ h3:first-child { margin-top: 0; }
 </head>
 <body>
 <div id="page">
-  <header><h1>{{TITLE}}</h1><span id="overall"></span><div id="facts"></div><a class="glass office-link" href="/office">Office →</a></header>
+  <header><h1>{{TITLE}}</h1><span id="overall"></span><div id="facts"></div><a class="glass office-link" href="/setup" title="Settings">⚙ Settings</a><a class="glass office-link" href="/logout">Sign out</a><a class="glass office-link" href="/office">Office →</a></header>
   <div id="alerts"></div>
   <div class="row r4">
     <section class="card mini"><div><h2>CPU</h2><div class="hero" id="cpuV">-</div></div><div class="chart" id="cpuC"></div></section>
@@ -263,10 +263,10 @@ function render(d) {
   $('cpuV').innerHTML = `${cpu}%<small>load ${s.load ? s.load[0].toFixed(1) : '-'} of ${s.cores || '-'} cores${s.speed_limit < 100 ? ` · limited to ${s.speed_limit}%` : ''}</small>`;
   $('memV').innerHTML = mem.total ? `${bytes(mem.used)}<small>of ${bytes(mem.total, 0)} · swap ${bytes(mem.swap_used)}</small>` : '-';
   $('netV').innerHTML = `↓ ${rate(h.rx[h.rx.length - 1])}<small>↑ ${rate(h.tx[h.tx.length - 1])}</small>`;
-  $('sabV').innerHTML = sab.ok ? `${rate(sab.speed)}<small>${sab.queueTotal} in queue${sab.queueTotal ? ` · ${bytes(sab.left)} left · ${esc(sab.eta)}` : ''}</small>` : 'Not responding';
+  $('sabV').innerHTML = sab.off ? 'Not set up' : sab.ok ? `${rate(sab.speed)}<small>${sab.queueTotal} in queue${sab.queueTotal ? ` · ${bytes(sab.left)} left · ${esc(sab.eta)}` : ''}</small>` : 'Not responding';
   const sabNext = nextTip((d.services.find((v) => v.name === 'SABnzbd') || {}).next);
   if (sabNext) { $('sabV').dataset.tip = sabNext; $('sabV').tabIndex = 0; } else { delete $('sabV').dataset.tip; $('sabV').removeAttribute('tabindex'); }
-  put('sabState', !sab.ok ? pill('error', 'Down') : sab.paused ? pill('warning', 'Paused') : pill('', sab.speed > 0 ? 'Downloading' : 'Idle'));
+  put('sabState', sab.off ? pill('', 'Off') : !sab.ok ? pill('error', 'Down') : sab.paused ? pill('warning', 'Paused') : pill('', sab.speed > 0 ? 'Downloading' : 'Idle'));
 
   const pct = (v) => Math.round(v) + '%';
   chart('cpuC', [{ name: 'CPU', color: 'var(--s1)', values: h.cpu }], pct, 100);
@@ -285,12 +285,12 @@ function render(d) {
   put('cinema', cin.watched ? `<h3>Open right now</h3>${rows(cin.streams, (t) => `<li><span class="t" title="${esc(t.title)}">${esc(t.title)}</span><span class="m">${t.who ? `${who(t.who)}${t.pct}%` : esc(t.service || 'Unknown')}</span></li>`, 'Nothing is playing')}
     <h3>Latest watched</h3>${rows(cin.watched, (w) => `<li><span class="t" title="${esc(w.title)}">${esc(w.title)}</span><span class="m">${who(w.who)}${w.pct}% · ${esc(ago(w.when))}</span></li>`, 'Nothing watched yet')}` : '<div class="empty">Reading…</div>');
 
-  put('queue', !sab.ok ? '<div class="empty">SABnzbd is not responding</div>' : `<div class="tiles">${tile(bytes(sab.totals.day), 'Today')}${tile(bytes(sab.totals.week), 'This week')}${tile(bytes(sab.totals.month), 'This month')}${tile(bytes(sab.totals.total), 'All time')}</div>
+  put('queue', sab.off ? '<div class="empty">SABnzbd is not set up</div>' : !sab.ok ? '<div class="empty">SABnzbd is not responding</div>' : `<div class="tiles">${tile(bytes(sab.totals.day), 'Today')}${tile(bytes(sab.totals.week), 'This week')}${tile(bytes(sab.totals.month), 'This month')}${tile(bytes(sab.totals.total), 'All time')}</div>
     <h3>In SABnzbd</h3>${rows(sab.queue.slice(0, 8), (q) => `<li><span class="t" title="${esc(q.title)}">${esc(q.title)}</span><span class="m">${Math.round(q.pct)}% · ${esc(q.left)}</span></li>`, 'Queue is empty')}`);
 
   const R = d.radarr, S = d.sonarr;
-  put('radarrSum', R.ok ? esc(`${num(R.library.have)} of ${num(R.library.total)} on disk · ${bytes(R.library.size)} · ${num(R.missing)} missing`) : pill('error', 'Radarr down'));
-  put('sonarrSum', S.ok ? esc(`${num(S.library.total)} series · ${num(S.library.have)} of ${num(S.library.episodes)} episodes · ${bytes(S.library.size)}`) : pill('error', 'Sonarr down'));
+  put('radarrSum', R.off ? pill('', 'Not set up') : R.ok ? esc(`${num(R.library.have)} of ${num(R.library.total)} on disk · ${bytes(R.library.size)} · ${num(R.missing)} missing`) : pill('error', 'Radarr down'));
+  put('sonarrSum', S.off ? pill('', 'Not set up') : S.ok ? esc(`${num(S.library.total)} series · ${num(S.library.have)} of ${num(S.library.episodes)} episodes · ${bytes(S.library.size)}`) : pill('error', 'Sonarr down'));
   put('movies', posters(R.recent || [], 'Nothing added yet'));
   put('shows', posters(S.recent || [], 'Nothing added yet'));
   put('upcoming', rows(d.upcoming, (u) => `<li><span class="m" style="width:96px">${esc(day(u.when))}</span><span class="t">${esc(u.title)}</span><span class="m">${esc(u.kind)}</span></li>`, 'Nothing scheduled'));

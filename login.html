@@ -21,14 +21,16 @@ button { padding: 10px; font: inherit; font-weight: 600; color: #fff; background
 <body>
 <form method="post" action="/login">
   <h1>{{TITLE}}</h1>
+  <label for="user">User</label>
+  <input id="user" name="user" type="text" autocomplete="username" autocapitalize="none" required autofocus>
   <label for="password">Password</label>
-  <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
+  <input id="password" name="password" type="password" autocomplete="current-password" required>
   <div id="error" role="alert"></div>
   <button type="submit">Sign in</button>
 </form>
 <script>
 const e = new URLSearchParams(location.search).get('e');
-document.getElementById('error').textContent = e === 'locked' ? 'Too many attempts. Try again in a few minutes.' : e ? 'Wrong password' : '';
+document.getElementById('error').textContent = e === 'locked' ? 'Too many attempts. Try again in a few minutes.' : e ? 'Wrong user or password' : '';
 </script>
 </body>
 </html>

@@ -28,7 +28,41 @@ header a { margin-left: auto; color: var(--text); text-decoration: none; font-si
 .hint { position: absolute; left: 0; right: 0; bottom: 6px; color: var(--muted); font-size: 12px; text-align: center; pointer-events: none; }
 .glass, #tip { background: var(--glass); border: 1px solid var(--edge); -webkit-backdrop-filter: blur(28px) saturate(170%); backdrop-filter: blur(28px) saturate(170%); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .16), 0 10px 30px rgba(0, 0, 0, .22); }
 
-#scene { position: relative; height: calc(100vh - 64px); min-height: 360px; touch-action: none; }
+#stage { display: flex; gap: 14px; }
+#stage.left { flex-direction: row-reverse; }
+#scene { position: relative; flex: 1; min-width: 0; height: calc(100vh - 64px); min-height: 360px; touch-action: none; }
+#home { width: 360px; flex: none; height: calc(100vh - 64px); min-height: 360px; overflow: auto; border-radius: 20px; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+#home[hidden] { display: none; }
+#home h2 { margin: 0; font-size: 15px; font-weight: 600; display: flex; justify-content: space-between; align-items: baseline; }
+#home h2 small { color: var(--muted); font-weight: 500; font-size: 12px; }
+.stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.stat { background: rgba(255, 255, 255, .05); border: 1px solid var(--edge); border-radius: 12px; padding: 7px 10px; }
+.stat b { display: block; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.stat span { color: var(--muted); font-size: 11.5px; }
+.bar { height: 4px; border-radius: 3px; background: rgba(255, 255, 255, .12); overflow: hidden; margin-top: 5px; }
+.bar i { display: block; height: 100%; background: #4ab0ff; border-radius: 3px; }
+.bar i.warning { background: var(--warning); } .bar i.error { background: var(--critical); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.tile { display: grid; gap: 6px; padding: 10px; border-radius: 14px; background: rgba(255, 255, 255, .05); border: 1px solid var(--edge); color: var(--text); text-decoration: none; min-width: 0; transition: background .15s, transform .15s; }
+a.tile:hover, a.tile:focus-visible { background: rgba(255, 255, 255, .11); transform: translateY(-1px); }
+.tile .top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tile .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+.icon { width: 30px; height: 30px; flex: none; border-radius: 8px; display: grid; place-items: center; font-size: 19px; background: rgba(255, 255, 255, .08); overflow: hidden; }
+.icon img { width: 100%; height: 100%; object-fit: contain; }
+.icon.letter { font-size: 14px; font-weight: 700; color: #fff; }
+.tile .meta { color: var(--muted); font-size: 11.5px; display: flex; justify-content: space-between; gap: 6px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tile .meta.down { color: var(--critical); }
+#home.table { width: 430px; }
+.tableWrap { overflow-x: auto; }
+table.home td.io { font-size: 11px; line-height: 1.25; color: var(--muted); }
+table.home { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+table.home th { text-align: left; color: var(--muted); font-weight: 500; font-size: 11.5px; padding: 0 6px 6px; }
+table.home td { padding: 6px 5px; border-top: 1px solid rgba(255, 255, 255, .08); white-space: nowrap; }
+table.home td.n { display: flex; align-items: center; gap: 8px; max-width: 160px; }
+table.home td.n a, table.home td.n span { color: var(--text); text-decoration: none; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+table.home td.n a:hover { text-decoration: underline; }
+table.home .icon { width: 22px; height: 22px; font-size: 14px; border-radius: 6px; }
+.empty { color: var(--muted); font-size: 13px; }
 #scene canvas { display: block; width: 100%; height: 100%; cursor: grab; }
 #scene canvas:active { cursor: grabbing; }
 #labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 1; }
@@ -44,10 +78,16 @@ header a { margin-left: auto; color: var(--text); text-decoration: none; font-si
 .badge { position: absolute; right: -14px; top: -14px; width: 26px; height: 26px; border-radius: 50%; display: none; place-items: center; font-style: normal; font-weight: 800; font-size: 14px; color: #a76400; background: #fff; border: 3px solid var(--warning); pointer-events: auto; cursor: help; box-shadow: 0 4px 12px rgba(0, 0, 0, .2); }
 .badge.error { color: #c0302a; border-color: var(--critical); }
 .badge.show { display: grid; }
+@media (max-width: 1000px) {
+  #stage, #stage.left { flex-direction: column; }
+  #scene { flex: none; }  /* its own height, not one derived from the canvas (that would feed back through the resize observer) */
+  #home { width: auto; height: auto; min-height: 0; overflow: visible; }
+}
 @media (max-width: 700px) {
   #page { padding: 16px 16px 20px; }
   #scene { height: 115vw; min-height: 0; }
   .hint { position: static; margin-top: 4px; }
+  #home { margin-top: 18px; }
   .tag { font-size: 10px; padding: 2px 7px; gap: 4px; }
   .badge { width: 20px; height: 20px; font-size: 11px; right: -10px; top: -10px; }
 }
@@ -60,7 +100,10 @@ header a { margin-left: auto; color: var(--text); text-decoration: none; font-si
 <body>
 <div id="page">
   <header><h1>The Office</h1><span id="summary"></span><a class="glass" href="/">← Dashboard</a></header>
-  <div id="scene"><div id="labels"></div><div class="hint">Drag to turn the room · scroll or pinch to zoom</div></div>
+  <div id="stage">
+    <div id="scene"><div id="labels"></div><div class="hint">Drag to turn the room · scroll or pinch to zoom</div></div>
+    <aside id="home" class="glass" hidden aria-label="Start page"></aside>
+  </div>
   <div class="sr" id="srStatus" aria-live="polite"></div>
 </div>
 <div id="tip"></div>
@@ -136,6 +179,7 @@ function resize() {
   outline.uniforms.res.value.set(w, h);
 }
 addEventListener('resize', resize);
+new ResizeObserver(() => resize()).observe(host);  // the start page panel can appear beside the room
 
 // ---------- building blocks ----------
 const mats = new Map();
@@ -554,7 +598,7 @@ for (let i = 0; i < 12; i++) {
   parcels.push(p);
 }
 
-// ---------- status whiteboard on the left wall: live graphs for the Mac mini ----------
+// ---------- status whiteboard on the left wall: live graphs for the Proxmox host ----------
 const fmtBytes = (b) => { const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0, n = b || 0; while (n >= 1024 && i < 4) { n /= 1024; i++; } return (i < 2 ? Math.round(n) : n.toFixed(1)) + ' ' + u[i]; };
 // network meters and graphs read full at 100 Mbit/s; faster bursts just peg them
 const NET_FULL = 100e6 / 8;
@@ -605,7 +649,7 @@ plane(WB_WIDTH, WB_HEIGHT, new THREE.MeshStandardMaterial({ map: wb, roughness: 
 rbox(0.16, 0.05, WB_WIDTH * 0.6, 0.02, '#c3c7d1', -11.86, WB_Y - WB_HEIGHT / 2 - 0.05, WB_Z);
 ['#e05d5d', '#4f86e0', '#3fae7a'].forEach((c, i) => { const m = cyl(0.025, 0.025, 0.28, c, -11.84, WB_Y - WB_HEIGHT / 2 - 0.0, WB_Z - 1.2 + i * 0.4); m.rotation.x = Math.PI / 2; });
 
-// ---------- data center: the Mac mini itself, racks with live meters, drive monitors ----------
+// ---------- data center: the Proxmox host itself, racks with live meters, drive monitors ----------
 const DC = { x0: -12, x1: -4.4, z0: 5.2, z1: 9 };
 const DCX = (DC.x0 + DC.x1) / 2, DCW = DC.x1 - DC.x0;
 const raised = canvasTexture(256, 256, (g, w, h) => {
@@ -707,7 +751,7 @@ for (let b = 0; b < 5; b++) { const blade = rbox(0.08, 0.24, 0.015, 0.01, '#9aa0
 ball(0.05, '#c9ced6', 0, 0, 0.01, fan);
 for (let v = 0; v < 4; v++) box(0.6, 0.02, 0.01, '#b8bcc8', 0, 0.2 + v * 0.06, 0.31, cooler);
 
-// the Mac mini, oversized, on a pedestal, with a glow that follows the CPU
+// the Proxmox host, oversized, on a pedestal, with a glow that follows the CPU
 const mini = group(-8.0, 0.08, 7.05, scene, 0.75);
 rbox(1.9, 0.6, 1.9, 0.08, '#f4f2ee', 0, 0.3, 0, mini);
 const miniGlow = add(new THREE.CylinderGeometry(0.78, 0.78, 0.04, 40), mat('#4ab0ff', { emissive: '#4ab0ff', emissiveIntensity: 0.5 }), 0, 0.62, 0, mini, false);
@@ -779,6 +823,7 @@ function updateDataCenter(d) {
   });
   const issues = d.alerts.filter((a) => ['CPU', 'Memory', 'Network', 'Drives'].includes(a.source));
   dcTag.querySelector('.dot').className = 'dot ' + (issues.some((a) => a.level === 'error') ? 'error' : issues.length ? 'warning' : '');
+  dcTag.querySelector('b').textContent = s.host || 'Proxmox host';
   dcTag.querySelector('span').textContent = `CPU ${dcState.cpu}% · Mem ${Math.round(dcState.mem)}% · ↓ ${fmtMbit(last(h.rx))}`;
   const badge = dcTag.querySelector('.badge');
   badge.classList.toggle('show', issues.length > 0);
@@ -797,7 +842,7 @@ function animateDataCenter(dt) {
 }
 const dcTag = document.createElement('div');
 dcTag.className = 'label';
-dcTag.innerHTML = '<div class="tag"><i class="dot"></i><b>Mac mini</b><span></span><i class="badge" tabindex="0">!</i></div>';
+dcTag.innerHTML = '<div class="tag"><i class="dot"></i><b>Proxmox host</b><span></span><i class="badge" tabindex="0">!</i></div>';
 $('labels').append(dcTag);
 
 function updateBoard(d) {
@@ -1240,12 +1285,77 @@ function render(d) {
   pileLabel.dataset.tip = queueText(sab);
 }
 
+// ---------- start page: your own links, with live numbers, beside the room ----------
+const escH = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const perSec = (b) => fmtBytes(b) + '/s';
+const pctCls = (p) => p >= 90 ? 'error' : p >= 75 ? 'warning' : '';
+const LETTER_COLORS = ['#3987e5', '#a259ff', '#2a9d8f', '#e76f51', '#e9a23b', '#d6457a'];
+function iconHtml(t) {
+  if (t.icon && t.icon.startsWith('data:image/')) return `<span class="icon"><img src="${escH(t.icon)}" alt=""></span>`;
+  if (t.icon) return `<span class="icon">${escH(t.icon)}</span>`;
+  const n = [...(t.name || '?')][0].toUpperCase();
+  return `<span class="icon letter" style="background:${LETTER_COLORS[(t.name || '').length % LETTER_COLORS.length]}">${escH(n)}</span>`;
+}
+const linkOk = (u) => /^https?:\/\//i.test(u || '');
+function tileStatus(t) {
+  if (t.guest && t.guest.status !== 'running') return { cls: 'error', text: t.guest.status || 'off' };
+  if (t.up === false) return { cls: 'error', text: 'offline' };
+  if (t.up === null) return { cls: 'warning', text: '…' };
+  return { cls: '', text: t.ms != null ? `${t.ms} ms` : 'online' };
+}
+let homeKey = '';
+function renderHome(d) {
+  const h = d.home || {}, aside = $('home');
+  const show = !!h.enabled;
+  if (aside.hidden === show) { aside.hidden = !show; }
+  $('stage').classList.toggle('left', show && h.side === 'left');
+  aside.classList.toggle('table', h.layout === 'table');
+  if (!show) return;
+  const s = d.system || {}, mem = s.memory || {}, hist = d.history || {}, last = (a) => (a && a[a.length - 1]) || 0;
+  const cpu = last(hist.cpu), memPct = mem.total ? mem.used / mem.total * 100 : 0;
+  const stats = s.host ? `<div class="stats">
+    <div class="stat"><span>CPU · ${escH(s.cores || '-')} Kerne</span><b>${cpu}%</b><div class="bar"><i class="${pctCls(cpu)}" style="width:${cpu}%"></i></div></div>
+    <div class="stat"><span>RAM</span><b>${fmtBytes(mem.used)} <span>/ ${fmtBytes(mem.total)}</span></b><div class="bar"><i class="${pctCls(memPct)}" style="width:${memPct.toFixed(0)}%"></i></div></div>
+    <div class="stat"><span>Last (1/5/15 min)</span><b>${(s.load || []).map((x) => x.toFixed(1)).join(' · ') || '-'}</b></div>
+    <div class="stat"><span>Netzwerk</span><b>↓ ${perSec(last(hist.rx))}</b><span>↑ ${perSec(last(hist.tx))}</span></div>
+  </div>` : '';
+  let body;
+  if (!h.tiles.length) body = '<div class="empty">Noch keine Kacheln. Lege sie unter ⚙ Settings → Startseite an.</div>';
+  else if (h.layout === 'table') {
+    body = `<div class="tableWrap"><table class="home"><thead><tr><th>Dienst</th><th>Status</th><th>CPU</th><th>RAM</th><th>Netz</th></tr></thead><tbody>${h.tiles.map((t) => {
+      const st = tileStatus(t), g = t.guest;
+      const name = linkOk(t.url) ? `<a href="${escH(t.url)}" target="_blank" rel="noopener noreferrer">${escH(t.name)}</a>` : `<span>${escH(t.name)}</span>`;
+      return `<tr data-tip="${escH(t.check)}${g ? `\n${g.type === 'lxc' ? 'LXC' : 'VM'} ${g.id} ${g.name || ''}` : ''}"><td class="n">${iconHtml(t)}${name}</td><td><i class="dot ${st.cls}" style="display:inline-block"></i> ${escH(st.text)}</td>
+        <td>${g && g.status === 'running' ? g.cpu.toFixed(0) + '%' : '–'}</td><td>${g && g.maxmem ? fmtBytes(g.mem) : '–'}</td><td class="io">${g && g.status === 'running' ? `↓ ${perSec(g.rx)}<br>↑ ${perSec(g.tx)}` : '–'}</td></tr>`;
+    }).join('')}</tbody></table></div>`;
+  } else {
+    body = `<div class="tiles">${h.tiles.map((t) => {
+      const st = tileStatus(t), g = t.guest, tag = linkOk(t.url) ? 'a' : 'div';
+      const attrs = tag === 'a' ? ` href="${escH(t.url)}" target="_blank" rel="noopener noreferrer"` : '';
+      const memPct = g && g.maxmem ? g.mem / g.maxmem * 100 : 0;
+      const extra = g && g.status === 'running' ? `
+        <div class="meta"><span>CPU ${g.cpu.toFixed(0)}%</span><span>RAM ${fmtBytes(g.mem)}</span></div>
+        <div class="bar"><i class="${pctCls(memPct)}" style="width:${memPct.toFixed(0)}%"></i></div>
+        <div class="meta"><span>↓ ${perSec(g.rx)}</span><span>↑ ${perSec(g.tx)}</span></div>` : '';
+      return `<${tag} class="tile"${attrs} data-tip="${escH(t.check)}${g ? `\n${g.type === 'lxc' ? 'LXC' : 'VM'} ${g.id} ${g.name || ''}` : ''}">
+        <div class="top">${iconHtml(t)}<span class="name">${escH(t.name)}</span><i class="dot ${st.cls}"></i></div>
+        <div class="meta${st.cls === 'error' ? ' down' : ''}"><span>${escH(st.text)}</span>${g && g.uptime ? `<span>up ${Math.floor(g.uptime / 86400)}d ${Math.floor(g.uptime % 86400 / 3600)}h</span>` : ''}</div>${extra}
+      </${tag}>`;
+    }).join('')}</div>`;
+  }
+  const up = h.tiles.filter((t) => tileStatus(t).cls !== 'error').length;
+  const html = `<h2>${escH(s.host ? s.host : 'Start')}<small>${up}/${h.tiles.length} online</small></h2>${stats}${body}`;
+  if (html !== homeKey) { homeKey = html; aside.innerHTML = html; }
+}
+
 async function tick() {
   if (document.hidden) return;
   try {
     const r = await fetch('/api/data', { cache: 'no-store' });
     if (r.status === 401) { location.href = '/login'; return; }
-    render(await r.json());
+    const d = await r.json();
+    render(d);
+    renderHome(d);
   } catch { $('summary').textContent = 'Dashboard not responding'; }
 }
 

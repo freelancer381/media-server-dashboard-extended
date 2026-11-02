@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Setup · {{TITLE}}</title>
+<style>
+:root { color-scheme: dark; --bg: #0a0e1a; --edge: rgba(255, 255, 255, .14); --glass: rgba(255, 255, 255, .065); --text: #f5f5f7; --muted: rgba(235, 235, 245, .62); --s1: #3987e5; --good: #30d158; --warning: #ffd60a; --critical: #ff5f57; }
+* { box-sizing: border-box; }
+html { background: var(--bg); }
+body { margin: 0; min-height: 100vh; padding: 24px 16px 48px; color: var(--text); font: 14px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif; }
+body::before { content: ''; position: fixed; inset: 0; z-index: -1; background: radial-gradient(50vw 50vw at 25% 20%, rgba(64, 110, 255, .38), transparent 70%), radial-gradient(45vw 45vw at 80% 35%, rgba(150, 70, 235, .3), transparent 70%), radial-gradient(55vw 55vw at 60% 100%, rgba(0, 170, 190, .26), transparent 70%), var(--bg); }
+main { max-width: 760px; margin: 0 auto; }
+header { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+header h1 { margin: 0; font-size: 20px; font-weight: 600; flex: 1; }
+header a { color: var(--muted); text-decoration: none; }
+.glass { background: var(--glass); border: 1px solid var(--edge); -webkit-backdrop-filter: blur(28px) saturate(170%); backdrop-filter: blur(28px) saturate(170%); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .16), 0 10px 30px rgba(0, 0, 0, .22); border-radius: 20px; }
+nav { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+nav button { background: transparent; color: var(--muted); border: 1px solid var(--edge); font-weight: 500; padding: 7px 12px; }
+nav button[aria-current="step"] { background: var(--s1); color: #fff; border-color: transparent; }
+section { padding: 22px; display: none; }
+section.on { display: grid; gap: 14px; }
+h2 { margin: 0; font-size: 17px; font-weight: 600; }
+h3 { margin: 6px 0 0; font-size: 14px; font-weight: 600; }
+p, .hint { margin: 0; color: var(--muted); }
+.hint { font-size: 12.5px; }
+label { display: grid; gap: 5px; color: var(--muted); font-size: 12.5px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 600px) { .grid2 { grid-template-columns: 1fr; } }
+input[type=text], input[type=password], input[type=url], select { width: 100%; padding: 9px 11px; font: inherit; color: var(--text); background: rgba(255, 255, 255, .08); border: 1px solid var(--edge); border-radius: 11px; }
+select option { background: #1b2033; }
+#preset { width: auto; }
+.check { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 14px; cursor: pointer; }
+.check input { width: 17px; height: 17px; accent-color: var(--s1); margin: 0; }
+button { padding: 9px 14px; font: inherit; font-weight: 600; color: #fff; background: var(--s1); border: 0; border-radius: 11px; cursor: pointer; }
+button.ghost { background: rgba(255, 255, 255, .1); border: 1px solid var(--edge); }
+button.danger { background: transparent; color: var(--critical); border: 1px solid rgba(255, 95, 87, .4); }
+button:disabled { opacity: .5; cursor: default; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.row.end { justify-content: space-between; }
+.app { border: 1px solid var(--edge); border-radius: 14px; padding: 12px 14px; display: grid; gap: 10px; background: rgba(255, 255, 255, .03); }
+.app .body { display: grid; gap: 10px; }
+.app.off .body { display: none; }
+.status { font-size: 12.5px; min-height: 18px; }
+.status.ok { color: var(--good); }
+.status.err { color: var(--critical); }
+.status.busy { color: var(--muted); }
+.list { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.list .check { font-size: 13px; }
+.radio { display: grid; gap: 8px; }
+.radio .check { align-items: flex-start; }
+.radio .check span small { display: block; color: var(--muted); font-size: 12px; }
+.tileRow { display: grid; grid-template-columns: auto 1fr; gap: 10px 12px; align-items: start; }
+.iconPick { display: grid; gap: 6px; justify-items: center; }
+.iconPrev { width: 52px; height: 52px; border-radius: 12px; display: grid; place-items: center; font-size: 28px; background: rgba(255, 255, 255, .08); border: 1px solid var(--edge); overflow: hidden; }
+.iconPrev img { width: 100%; height: 100%; object-fit: contain; }
+.iconPick input[type=text] { width: 52px; text-align: center; padding: 6px 4px; }
+.iconPick button { padding: 4px 8px; font-size: 12px; font-weight: 500; }
+.mini { padding: 5px 9px; font-size: 12px; font-weight: 500; }
+#error { color: var(--critical); min-height: 20px; }
+.summary { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; font-size: 13.5px; }
+.summary dt { color: var(--muted); }
+.summary dd { margin: 0; overflow-wrap: anywhere; }
+code { background: rgba(255, 255, 255, .1); padding: 1px 5px; border-radius: 6px; font-size: 12.5px; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <header><h1 id="heading">Einrichtung</h1><a id="back" href="/" hidden>← Zum Dashboard</a></header>
+  <nav id="steps" aria-label="Schritte"></nav>
+
+  <section class="glass" data-step="Start" id="s-token">
+    <h2>Willkommen</h2>
+    <p>Gib den Setup-Token ein. Ihn hat das Installationsskript am Ende ausgegeben; du findest ihn auch im Container unter <code>/var/lib/media-server-dashboard/setup-token.txt</code> oder im Log (<code>journalctl -u media-server-dashboard</code>).</p>
+    <label>Setup-Token<input id="token" type="text" autocomplete="off" spellcheck="false" placeholder="xxxxxxxx-xxxxxxxx"></label>
+    <div class="status" id="tokenStatus"></div>
+    <div class="row end"><span></span><button id="tokenGo">Weiter</button></div>
+  </section>
+
+  <section class="glass" data-step="Zugang" id="s-user">
+    <h2>Zugang</h2>
+    <p>Mit diesem Benutzer meldest du dich am Dashboard an.</p>
+    <label>Titel des Dashboards<input id="title" type="text" maxlength="80"></label>
+    <label>Benutzername<input id="user" type="text" autocomplete="username" autocapitalize="none" spellcheck="false"></label>
+    <div class="grid2">
+      <label>Passwort <span id="pwHint"></span><input id="pw" type="password" autocomplete="new-password"></label>
+      <label>Passwort wiederholen<input id="pw2" type="password" autocomplete="new-password"></label>
+    </div>
+    <div class="hint">Mindestens 10 Zeichen.</div>
+  </section>
+
+  <section class="glass" data-step="Adresse" id="s-address">
+    <h2>Adresse</h2>
+    <p>Wie soll das Dashboard erreichbar sein?</p>
+    <div class="radio">
+      <label class="check"><input type="radio" name="addr" value="ip"><span>Nur über die IP-Adresse<small id="ipHint">http://&lt;IP des Containers&gt;</small></span></label>
+      <label class="check"><input type="radio" name="addr" value="domain"><span>Eigene Domain<small>z. B. dashboard.example.com oder dashboard.home.lan</small></span></label>
+    </div>
+    <div id="domainBox" class="body" hidden>
+      <label>Domain<input id="domain" type="text" autocapitalize="none" spellcheck="false" placeholder="dashboard.example.com"></label>
+      <div class="radio">
+        <label class="check"><input type="radio" name="tls" value="public"><span>HTTPS mit Let's Encrypt<small>Die Domain muss öffentlich auf diese Adresse zeigen und Port 80/443 muss erreichbar sein.</small></span></label>
+        <label class="check"><input type="radio" name="tls" value="internal"><span>HTTPS mit eigener, interner CA<small>Für Domains nur im Heimnetz (z. B. *.home.lan). Der Browser warnt, bis du die CA von Caddy importierst.</small></span></label>
+      </div>
+      <label class="check"><input id="ipAccess" type="checkbox"> Zusätzlich weiter über http://&lt;IP&gt; erreichbar</label>
+    </div>
+    <p class="hint" id="noCaddy" hidden>Hinweis: Dieser Server läuft ohne den mitgelieferten Reverse Proxy (Caddy). Die Domain wird nur gespeichert; HTTPS musst du selbst davor einrichten.</p>
+  </section>
+
+  <section class="glass" data-step="Proxmox" id="s-pve">
+    <h2>Proxmox</h2>
+    <p>Liefert CPU, RAM, Netzwerk, Speicherplatz und den Status deiner Container/VMs. Ein API-Token mit der Rolle <code>PVEAuditor</code> (nur lesen) reicht.</p>
+    <label class="check"><input id="pveOn" type="checkbox"> Proxmox-Host anbinden</label>
+    <div id="pveBox" class="body">
+      <label>URL<input id="pveUrl" type="url" placeholder="https://192.168.1.10:8006"></label>
+      <div class="grid2">
+        <label>Token-ID<input id="pveTokenId" type="text" spellcheck="false" placeholder="dashboard@pve!msd"></label>
+        <label>Token-Secret <span id="pveSecretHint"></span><input id="pveSecret" type="password" autocomplete="off" placeholder="xxxxxxxx-xxxx-…"></label>
+      </div>
+      <label class="check"><input id="pveVerify" type="checkbox"> Zertifikat prüfen</label>
+      <label id="caBox">CA-Datei (optional)<input id="pveCa" type="text" spellcheck="false" placeholder="/var/lib/media-server-dashboard/pve-root-ca.pem"></label>
+      <div class="row"><button class="ghost" id="pveTest">Verbindung testen</button><span class="status" id="pveStatus"></span></div>
+      <div id="pveFound" hidden class="body">
+        <label>Node<select id="pveNode"></select></label>
+        <h3>Laufwerke anzeigen</h3>
+        <div class="hint">Keins ausgewählt = alle aktiven Storages.</div>
+        <div class="list" id="pveStorages"></div>
+        <h3>Diese Container/VMs überwachen</h3>
+        <div class="hint">Läuft einer davon nicht, zeigt das Dashboard eine Warnung.</div>
+        <div class="list" id="pveGuests"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="glass" data-step="Apps" id="s-apps">
+    <h2>Apps</h2>
+    <p>Hake an, was bei dir läuft. Die URL ist die Adresse der App aus Sicht dieses Containers, inklusive URL-Basis, falls gesetzt (z. B. <code>http://192.168.1.21:7878</code>). Den API-Key findest du in der jeweiligen App unter Settings → General.</p>
+    <div id="builtinApps" class="body"></div>
+    <h3>Eigene Apps</h3>
+    <p class="hint">Weitere *arr-Apps (Lidarr, Readarr, Whisparr …) oder ein beliebiges Tool mit HTTP-Adresse. Sie erscheinen als Dienst im Dashboard und als Mitarbeiter im Office.</p>
+    <div id="customApps" class="body"></div>
+    <div class="row">
+      <select id="preset" aria-label="Vorlage">
+        <option value="lidarr">Lidarr</option><option value="readarr">Readarr</option><option value="whisparr">Whisparr</option>
+        <option value="seerr">Jellyseerr / Overseerr</option><option value="jellyfin">Jellyfin</option><option value="plex">Plex</option>
+        <option value="tautulli">Tautulli</option><option value="qbit">qBittorrent</option><option value="arr">Andere *arr-App</option><option value="generic">Eigenes Tool</option>
+      </select>
+      <button class="ghost" id="addCustom">+ Hinzufügen</button>
+    </div>
+  </section>
+
+  <section class="glass" data-step="Startseite" id="s-home">
+    <h2>Startseite</h2>
+    <p>Eine eigene Übersicht mit Links zu deinen Diensten, neben dem 3D-Büro. Jede Kachel zeigt, ob der Dienst erreichbar ist; mit verknüpftem Proxmox-Gast auch CPU, RAM und Traffic. Oben stehen die Werte des Hosts.</p>
+    <label class="check"><input id="homeOn" type="checkbox"> Startseite neben dem Büro anzeigen</label>
+    <div id="homeBox" class="body">
+      <div class="grid2">
+        <div class="radio"><b class="hint">Position</b>
+          <label class="check"><input type="radio" name="side" value="left"> Links vom Büro</label>
+          <label class="check"><input type="radio" name="side" value="right"> Rechts vom Büro</label></div>
+        <div class="radio"><b class="hint">Darstellung</b>
+          <label class="check"><input type="radio" name="layout" value="grid"> Kacheln</label>
+          <label class="check"><input type="radio" name="layout" value="table"> Tabelle</label></div>
+      </div>
+      <label class="check"><input id="homeStart" type="checkbox"> Nach dem Login direkt Büro + Startseite öffnen</label>
+      <div class="row"><h3 style="flex:1">Kacheln</h3><button class="ghost mini" id="tilesFromApps">Aus eingerichteten Apps übernehmen</button><button class="ghost mini" id="addTile">+ Kachel</button></div>
+      <div id="tiles" class="body"></div>
+    </div>
+  </section>
+
+  <section class="glass" data-step="Fertig" id="s-done">
+    <h2>Zusammenfassung</h2>
+    <dl class="summary" id="summary"></dl>
+    <div id="error" role="alert"></div>
+    <div class="row end"><span class="hint">Beim Speichern startet der Dienst neu.</span><button id="save">Speichern</button></div>
+  </section>
+
+  <div class="row end" id="pager" style="margin-top:14px"><button class="ghost" id="prev">← Zurück</button><button id="next">Weiter →</button></div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const PRESETS = {
+  lidarr: { name: 'Lidarr', kind: 'arr', api_version: 'v1', port: 8686 },
+  readarr: { name: 'Readarr', kind: 'arr', api_version: 'v1', port: 8787 },
+  whisparr: { name: 'Whisparr', kind: 'arr', api_version: 'v3', port: 6969 },
+  seerr: { name: 'Jellyseerr', kind: 'generic', auth: 'header', auth_name: 'X-Api-Key', health_path: '/api/v1/status', port: 5055 },
+  jellyfin: { name: 'Jellyfin', kind: 'generic', auth: 'header', auth_name: 'X-Emby-Token', health_path: '/System/Info', port: 8096 },
+  plex: { name: 'Plex', kind: 'generic', auth: 'query', auth_name: 'X-Plex-Token', health_path: '/identity', port: 32400 },
+  tautulli: { name: 'Tautulli', kind: 'generic', auth: 'query', auth_name: 'apikey', health_path: '/api/v2?cmd=status', port: 8181 },
+  qbit: { name: 'qBittorrent', kind: 'generic', auth: 'none', health_path: '/', port: 8080 },
+  arr: { name: '', kind: 'arr', api_version: 'v1' },
+  generic: { name: '', kind: 'generic', auth: 'header', auth_name: 'X-Api-Key', health_path: '/' },
+};
+
+let cfg = null, token = '', step = 0, pveResult = null;
+
+async function api(path, body) {
+  const r = await fetch(path, {
+    method: body ? 'POST' : 'GET',
+    headers: { 'Content-Type': 'application/json', 'X-Setup-Token': token },
+    body: body ? JSON.stringify(body) : undefined,
+    credentials: 'same-origin',
+  });
+  const data = await r.json().catch(() => ({ ok: false, error: `HTTP ${r.status}` }));
+  if (!r.ok && data.ok === undefined) data.ok = false;
+  return data;
+}
+function setStatus(el, cls, text) { el.className = 'status ' + cls; el.textContent = text; }
+
+// ---------- steps ----------
+const sections = () => [...document.querySelectorAll('section')].filter((s) => !s.dataset.skip);
+function show(i) {
+  const all = sections();
+  step = Math.max(0, Math.min(i, all.length - 1));
+  all.forEach((s, k) => s.classList.toggle('on', k === step));
+  $('steps').innerHTML = all.map((s, k) => `<button data-k="${k}" ${k === step ? 'aria-current="step"' : ''} ${!cfg ? 'disabled' : ''}>${k + 1}. ${esc(s.dataset.step)}</button>`).join('');
+  const isToken = all[step].id === 's-token', isDone = all[step].id === 's-done';
+  $('pager').hidden = isToken;
+  $('prev').disabled = step === 0 || (all[0].id === 's-token' && step === 1);
+  $('next').hidden = isDone;
+  if (isDone) renderSummary();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+$('steps').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b && cfg) show(+b.dataset.k); });
+$('prev').onclick = () => show(step - 1);
+$('next').onclick = () => { const msg = validate(sections()[step].id); if (msg) return alert(msg); show(step + 1); };
+
+function validate(id) {
+  if (id === 's-user') {
+    if (!/^[A-Za-z0-9._@-]{2,64}$/.test($('user').value.trim())) return 'Benutzername: 2–64 Zeichen, nur Buchstaben, Ziffern und . _ @ -';
+    if (!cfg.setup_done || $('pw').value) {
+      if ($('pw').value.length < 10) return 'Das Passwort braucht mindestens 10 Zeichen.';
+      if ($('pw').value !== $('pw2').value) return 'Die Passwörter stimmen nicht überein.';
+    }
+  }
+  if (id === 's-address' && addrMode() === 'domain' && !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/i.test($('domain').value.trim())) return 'Bitte eine gültige Domain eingeben.';
+  if (id === 's-pve' && $('pveOn').checked) {
+    if (!$('pveUrl').value.trim() || !$('pveTokenId').value.trim() || (!$('pveSecret').value && !cfg.proxmox.has_secret)) return 'Bitte URL, Token-ID und Secret ausfüllen.';
+    if (!$('pveNode').value) return 'Bitte erst „Verbindung testen“, damit der Node ausgewählt werden kann.';
+  }
+  if (id === 's-home' && $('homeOn').checked) {
+    for (const t of [...document.querySelectorAll('#tiles .tile')].map((el) => el.read())) {
+      if (!t.name) return 'Jede Kachel braucht einen Namen.';
+      if (!t.url && !t.check) return `${t.name}: bitte URL oder IP:Port angeben.`;
+      if (t.url && !/^https?:\/\/[^/\s]+/i.test(t.url)) return `${t.name}: die URL muss mit http:// oder https:// beginnen.`;
+    }
+  }
+  return '';
+}
+
+// ---------- token ----------
+$('tokenGo').onclick = async () => {
+  token = $('token').value.trim();
+  setStatus($('tokenStatus'), 'busy', 'Prüfe …');
+  const c = await api('/setup/config');
+  if (c.error) return setStatus($('tokenStatus'), 'err', c.error);
+  load(c);
+  show(1);
+};
+$('token').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('tokenGo').click(); });
+
+// ---------- address ----------
+const addrMode = () => document.querySelector('input[name=addr]:checked')?.value || 'ip';
+function syncAddr() { $('domainBox').hidden = addrMode() !== 'domain'; }
+document.querySelectorAll('input[name=addr]').forEach((r) => r.addEventListener('change', syncAddr));
+
+// ---------- proxmox ----------
+function syncPve() { $('pveBox').hidden = !$('pveOn').checked; $('caBox').hidden = !$('pveVerify').checked; }
+$('pveOn').addEventListener('change', syncPve);
+$('pveVerify').addEventListener('change', syncPve);
+const pveInput = () => ({ url: $('pveUrl').value.trim(), token_id: $('pveTokenId').value.trim(), token_secret: $('pveSecret').value, verify_tls: $('pveVerify').checked, ca_file: $('pveCa').value.trim(), node: $('pveNode').value || cfg.proxmox.node });
+async function testPve() {
+  setStatus($('pveStatus'), 'busy', 'Verbinde …');
+  const r = await api('/setup/test', { what: 'proxmox', proxmox: pveInput() });
+  if (!r.ok) { $('pveFound').hidden = true; return setStatus($('pveStatus'), 'err', '✕ ' + r.error); }
+  setStatus($('pveStatus'), 'ok', `✓ Verbunden · Proxmox VE ${r.version}`);
+  pveResult = r;
+  $('pveNode').innerHTML = r.nodes.map((n) => `<option ${n === r.node ? 'selected' : ''}>${esc(n)}</option>`).join('');
+  const gb = (b) => (b / 1024 ** 3).toFixed(0) + ' GB';
+  $('pveStorages').innerHTML = r.storages.map((s) => `<label class="check"><input type="checkbox" value="${esc(s.name)}" ${cfg.storages.includes(s.name) ? 'checked' : ''}> ${esc(s.name)} <span class="hint">${esc(s.type)} · ${gb(s.total)}</span></label>`).join('') || '<span class="hint">Keine aktiven Storages gefunden.</span>';
+  $('pveGuests').innerHTML = r.guests.map((g) => `<label class="check"><input type="checkbox" value="${g.id}" ${cfg.watch_guests.includes(String(g.id)) || cfg.watch_guests.includes(g.name) ? 'checked' : ''}> ${g.id} ${esc(g.name || '')} <span class="hint">${g.type === 'lxc' ? 'LXC' : 'VM'} · ${esc(g.status)}</span></label>`).join('') || '<span class="hint">Keine Gäste gefunden.</span>';
+  $('pveFound').hidden = false;
+  document.querySelectorAll('#tiles .tile').forEach((el) => el.refreshGuests());
+}
+$('pveTest').onclick = testPve;
+$('pveNode').addEventListener('change', testPve);
+const checked = (box) => [...$(box).querySelectorAll('input:checked')].map((i) => i.value);
+
+// ---------- apps ----------
+function builtinCard(key, b, a) {
+  const el = document.createElement('div');
+  el.className = 'app' + (a.enabled ? '' : ' off');
+  el.dataset.key = key;
+  el.innerHTML = `<label class="check"><input type="checkbox" class="on" ${a.enabled ? 'checked' : ''}> <b>${esc(b.name)}</b></label>
+    <div class="body">
+      <div class="grid2">
+        <label>URL<input type="url" class="url" value="${esc(a.url)}" placeholder="http://192.168.1.x:${b.port}"></label>
+        <label>API-Key ${a.has_key ? '<span class="hint">(gespeichert – leer lassen zum Behalten)</span>' : ''}<input type="password" class="key" autocomplete="off"></label>
+      </div>
+      <div class="row"><label class="check"><input type="checkbox" class="verify" ${a.verify_tls !== false ? 'checked' : ''}> Zertifikat prüfen (bei https)</label>
+        <button class="ghost test">Testen</button><span class="status"></span></div>
+    </div>`;
+  wireCard(el, () => ({ key, url: el.querySelector('.url').value.trim(), api_key: el.querySelector('.key').value, verify_tls: el.querySelector('.verify').checked }));
+  return el;
+}
+function customCard(a) {
+  const el = document.createElement('div');
+  el.className = 'app custom';
+  const sel = (cls, opts, v) => `<select class="${cls}">${opts.map(([k, t]) => `<option value="${k}" ${k === v ? 'selected' : ''}>${t}</option>`).join('')}</select>`;
+  el.innerHTML = `<div class="row end"><b class="title">${esc(a.name || 'Neue App')}</b><button class="danger remove">Entfernen</button></div>
+    <div class="body">
+      <div class="grid2">
+        <label>Name<input type="text" class="name" maxlength="40" value="${esc(a.name || '')}"></label>
+        <label>Art${sel('kind', [['arr', '*arr-App (Lidarr, Readarr …)'], ['generic', 'Beliebiges Tool (HTTP)']], a.kind)}</label>
+      </div>
+      <div class="grid2">
+        <label>URL<input type="url" class="url" value="${esc(a.url || '')}" placeholder="http://192.168.1.x${a.port ? ':' + a.port : ''}"></label>
+        <label>API-Key / Token ${a.has_key ? '<span class="hint">(gespeichert)</span>' : ''}<input type="password" class="key" autocomplete="off"></label>
+      </div>
+      <div class="grid2 arrOnly"><label>API-Version${sel('apiv', [['v1', 'v1 (Lidarr, Readarr, Prowlarr)'], ['v3', 'v3 (Radarr, Sonarr, Whisparr)']], a.api_version || 'v1')}</label></div>
+      <div class="grid2 genOnly">
+        <label>Status-Pfad<input type="text" class="health" value="${esc(a.health_path || '/')}"></label>
+        <label>Key mitsenden als${sel('auth', [['header', 'HTTP-Header'], ['query', 'URL-Parameter'], ['none', 'gar nicht']], a.auth || 'header')}</label>
+        <label class="authName">Header-/Parametername<input type="text" class="authname" value="${esc(a.auth_name || 'X-Api-Key')}"></label>
+      </div>
+      <div class="row"><label class="check"><input type="checkbox" class="verify" ${a.verify_tls !== false ? 'checked' : ''}> Zertifikat prüfen (bei https)</label>
+        <button class="ghost test">Testen</button><span class="status"></span></div>
+    </div>`;
+  const q = (c) => el.querySelector(c);
+  const sync = () => {
+    const arr = q('.kind').value === 'arr';
+    q('.arrOnly').hidden = !arr; q('.genOnly').hidden = arr;
+    q('.authName').hidden = q('.auth').value === 'none';
+    q('.title').textContent = q('.name').value || 'Neue App';
+  };
+  ['.kind', '.auth', '.name'].forEach((c) => q(c).addEventListener('input', sync));
+  q('.remove').onclick = () => el.remove();
+  sync();
+  el.read = () => ({ name: q('.name').value.trim(), kind: q('.kind').value, url: q('.url').value.trim(), api_key: q('.key').value, api_version: q('.apiv').value,
+    health_path: q('.health').value.trim(), auth: q('.auth').value, auth_name: q('.authname').value.trim(), verify_tls: q('.verify').checked });
+  wireCard(el, el.read);
+  return el;
+}
+function wireCard(el, read) {
+  const on = el.querySelector('.on');
+  if (on) on.addEventListener('change', () => el.classList.toggle('off', !on.checked));
+  el.querySelector('.test').onclick = async () => {
+    const st = el.querySelector('.status');
+    setStatus(st, 'busy', 'Teste …');
+    const r = await api('/setup/test', { what: 'app', app: read() });
+    setStatus(st, r.ok ? 'ok' : 'err', r.ok ? `✓ Erreichbar${r.version ? ' · Version ' + r.version : ''}` : '✕ ' + r.error);
+  };
+}
+$('addCustom').onclick = () => { const card = customCard({ ...PRESETS[$('preset').value] }); $('customApps').append(card); card.querySelector('.url').focus(); };
+
+// ---------- start page tiles ----------
+function syncHome() { $('homeBox').hidden = !$('homeOn').checked; }
+$('homeOn').addEventListener('change', syncHome);
+const guestOptions = (sel) => '<option value="">– keiner –</option>' + ((pveResult && pveResult.guests) || []).map((g) =>
+  `<option value="${g.id}" ${String(sel) === String(g.id) ? 'selected' : ''}>${g.id} ${esc(g.name || '')} (${g.type === 'lxc' ? 'LXC' : 'VM'})</option>`).join('')
+  + (sel && !((pveResult && pveResult.guests) || []).some((g) => String(g.id) === String(sel)) ? `<option value="${esc(sel)}" selected>${esc(sel)}</option>` : '');
+// Shrink an uploaded image to 64×64 so the config stays small.
+function shrink(file) {
+  return new Promise((res, rej) => {
+    if (file.type === 'image/svg+xml' && file.size < 60000) { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); return; }
+    const img = new Image();
+    img.onload = () => { const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'); const k = Math.min(64 / img.width, 64 / img.height);
+      g.drawImage(img, (64 - img.width * k) / 2, (64 - img.height * k) / 2, img.width * k, img.height * k); URL.revokeObjectURL(img.src); res(c.toDataURL('image/png')); };
+    img.onerror = () => rej(new Error('Kein Bild'));
+    img.src = URL.createObjectURL(file);
+  });
+}
+function tileCard(t) {
+  const el = document.createElement('div');
+  el.className = 'app tile';
+  el.innerHTML = `<div class="tileRow">
+      <div class="iconPick"><div class="iconPrev"></div><input type="text" class="emoji" maxlength="8" placeholder="Emoji" aria-label="Emoji als Icon">
+        <label class="ghost mini" style="cursor:pointer;color:var(--text)">Bild…<input type="file" accept="image/*" hidden class="file"></label></div>
+      <div class="body">
+        <div class="grid2">
+          <label>Name<input type="text" class="name" maxlength="40" value="${esc(t.name || '')}"></label>
+          <label>URL (Klickziel)<input type="url" class="url" value="${esc(t.url || '')}" placeholder="https://jellyfin.home.lan"></label>
+        </div>
+        <div class="grid2">
+          <label>IP:Port prüfen (optional)<input type="text" class="check" value="${esc(t.check || '')}" placeholder="192.168.1.30:8096"></label>
+          <label>Proxmox-Gast (für CPU/RAM/Traffic)<select class="guest">${guestOptions(t.guest)}</select></label>
+        </div>
+        <div class="row end"><span class="hint">Ohne IP:Port wird die Adresse aus der URL geprüft.</span>
+          <span><button class="ghost mini up" title="Nach oben">↑</button> <button class="ghost mini down" title="Nach unten">↓</button> <button class="danger mini remove">Entfernen</button></span></div>
+      </div></div>`;
+  const q = (c) => el.querySelector(c);
+  let icon = t.icon || '';
+  const paint = () => {
+    q('.iconPrev').innerHTML = icon.startsWith('data:image/') ? `<img src="${esc(icon)}" alt="">` : esc(icon || [...(q('.name').value || '?')][0].toUpperCase());
+    q('.emoji').value = icon.startsWith('data:') ? '' : icon;
+  };
+  q('.emoji').addEventListener('input', () => { icon = q('.emoji').value.trim(); paint(); });
+  q('.name').addEventListener('input', paint);
+  q('.file').addEventListener('change', async () => { const f = q('.file').files[0]; if (!f) return; try { icon = await shrink(f); paint(); } catch (e) { alert('Das Bild konnte nicht gelesen werden.'); } });
+  q('.remove').onclick = () => el.remove();
+  q('.up').onclick = () => el.previousElementSibling && el.parentNode.insertBefore(el, el.previousElementSibling);
+  q('.down').onclick = () => el.nextElementSibling && el.parentNode.insertBefore(el.nextElementSibling, el);
+  el.read = () => ({ name: q('.name').value.trim(), url: q('.url').value.trim(), check: q('.check').value.trim(), guest: q('.guest').value, icon });
+  el.refreshGuests = () => { const v = q('.guest').value; q('.guest').innerHTML = guestOptions(v); };
+  paint();
+  return el;
+}
+$('addTile').onclick = () => { const el = tileCard({}); $('tiles').append(el); el.querySelector('.name').focus(); };
+const APP_ICONS = { Radarr: '🎬', Sonarr: '📺', Prowlarr: '🔎', Bazarr: '💬', SABnzbd: '📥', Lidarr: '🎵', Readarr: '📚', Whisparr: '🔞', Jellyfin: '🍿', Plex: '🎞️', Jellyseerr: '🙋', Tautulli: '📊', qBittorrent: '🌊' };
+$('tilesFromApps').onclick = () => {
+  const have = new Set([...document.querySelectorAll('#tiles .tile')].map((el) => el.read().name.toLowerCase()));
+  const list = [...document.querySelectorAll('#builtinApps .app')].filter((el) => el.querySelector('.on').checked)
+    .map((el) => ({ name: cfg.builtin[el.dataset.key].name, url: el.querySelector('.url').value.trim() }))
+    .concat([...document.querySelectorAll('#customApps .app')].map((el) => el.read()).map((a) => ({ name: a.name, url: a.url })));
+  // Guess the guest from its name, e.g. tile "Radarr" and LXC "radarr".
+  const guests = (pveResult && pveResult.guests) || [];
+  for (const a of list) {
+    if (!a.name || have.has(a.name.toLowerCase())) continue;
+    const g = guests.find((x) => (x.name || '').toLowerCase().includes(a.name.toLowerCase()));
+    $('tiles').append(tileCard({ ...a, icon: APP_ICONS[a.name] || '', guest: g ? g.id : '' }));
+  }
+};
+
+// ---------- load and save ----------
+function load(c) {
+  cfg = c;
+  $('heading').textContent = c.setup_done ? 'Einstellungen' : 'Einrichtung';
+  $('back').hidden = !c.setup_done;
+  $('s-token').dataset.skip = '1';
+  if (!c.setup_done) $('s-token').removeAttribute('data-skip');
+  $('title').value = c.title;
+  $('user').value = c.user;
+  $('pwHint').innerHTML = c.setup_done ? '<span class="hint">(leer lassen = unverändert)</span>' : '';
+  document.querySelector(`input[name=addr][value=${c.domain ? 'domain' : 'ip'}]`).checked = true;
+  document.querySelector(`input[name=tls][value=${c.tls === 'internal' ? 'internal' : 'public'}]`).checked = true;
+  $('domain').value = c.domain;
+  $('ipAccess').checked = c.ip_access !== false;
+  $('ipHint').textContent = `http://${c.lan || '<IP des Containers>'}${c.caddy ? '' : ':' + c.port}`;
+  $('noCaddy').hidden = c.caddy;
+  syncAddr();
+  const p = c.proxmox;
+  $('pveOn').checked = !!p.url || !c.setup_done;
+  $('pveUrl').value = p.url; $('pveTokenId').value = p.token_id; $('pveVerify').checked = p.verify_tls !== false; $('pveCa').value = p.ca_file;
+  $('pveSecretHint').innerHTML = p.has_secret ? '<span class="hint">(gespeichert – leer lassen zum Behalten)</span>' : '';
+  if (p.node) $('pveNode').innerHTML = `<option selected>${esc(p.node)}</option>`;
+  syncPve();
+  if (p.url && p.token_id && p.has_secret) testPve();
+  $('builtinApps').innerHTML = '';
+  for (const [k, b] of Object.entries(c.builtin)) $('builtinApps').append(builtinCard(k, b, c.apps[k]));
+  $('customApps').innerHTML = '';
+  for (const a of c.custom_apps) $('customApps').append(customCard(a));
+  const h = c.home;
+  $('homeOn').checked = h.enabled;
+  document.querySelector(`input[name=side][value=${h.side === 'left' ? 'left' : 'right'}]`).checked = true;
+  document.querySelector(`input[name=layout][value=${h.layout === 'table' ? 'table' : 'grid'}]`).checked = true;
+  $('homeStart').checked = h.start;
+  $('tiles').innerHTML = '';
+  for (const t of h.tiles) $('tiles').append(tileCard(t));
+  syncHome();
+}
+
+function collect() {
+  const apps = {};
+  document.querySelectorAll('#builtinApps .app').forEach((el) => {
+    apps[el.dataset.key] = { enabled: el.querySelector('.on').checked, url: el.querySelector('.url').value.trim(), api_key: el.querySelector('.key').value, verify_tls: el.querySelector('.verify').checked };
+  });
+  const pveOn = $('pveOn').checked;
+  return {
+    title: $('title').value.trim(), user: $('user').value.trim(), password: $('pw').value,
+    domain: addrMode() === 'domain' ? $('domain').value.trim() : '', tls: document.querySelector('input[name=tls]:checked').value, ip_access: $('ipAccess').checked,
+    proxmox: pveOn ? pveInput() : {}, storages: pveOn ? checked('pveStorages') : [], watch_guests: pveOn ? checked('pveGuests') : [],
+    apps, custom_apps: [...document.querySelectorAll('#customApps .app')].map((el) => el.read()),
+    home: { enabled: $('homeOn').checked, side: document.querySelector('input[name=side]:checked').value, layout: document.querySelector('input[name=layout]:checked').value,
+      start: $('homeStart').checked, tiles: [...document.querySelectorAll('#tiles .tile')].map((el) => el.read()) },
+  };
+}
+
+function renderSummary() {
+  const d = collect();
+  const on = Object.entries(d.apps).filter(([, a]) => a.enabled).map(([k]) => cfg.builtin[k].name).concat(d.custom_apps.map((a) => a.name || '(ohne Name)'));
+  const rows = [
+    ['Titel', d.title || 'Media Server Dashboard'], ['Benutzer', d.user], ['Passwort', d.password ? 'neu gesetzt' : 'unverändert'],
+    ['Adresse', d.domain ? `https://${d.domain} (${d.tls === 'internal' ? 'interne CA' : "Let's Encrypt"})${d.ip_access ? ' + http://IP' : ''}` : 'http://IP'],
+    ['Proxmox', d.proxmox.url ? `${d.proxmox.url} · Node ${d.proxmox.node}` : 'nicht angebunden'],
+    ['Laufwerke', d.proxmox.url ? (d.storages.join(', ') || 'alle') : '–'], ['Überwachte Gäste', d.watch_guests.join(', ') || '–'],
+    ['Apps', on.join(', ') || 'keine'],
+    ['Startseite', d.home.enabled ? `${d.home.side === 'left' ? 'links' : 'rechts'} vom Büro · ${d.home.layout === 'table' ? 'Tabelle' : 'Kacheln'} · ${d.home.tiles.length} Kachel(n)${d.home.start ? ' · nach Login' : ''}` : 'aus'],
+  ];
+  $('summary').innerHTML = rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
+}
+
+$('save').onclick = async () => {
+  $('save').disabled = true;
+  $('error').textContent = '';
+  const r = await api('/setup/save', collect());
+  if (!r.ok) { $('save').disabled = false; $('error').textContent = r.error || 'Speichern fehlgeschlagen'; return; }
+  $('error').style.color = 'var(--muted)';
+  $('error').textContent = 'Gespeichert. Der Dienst startet neu …';
+  // Wait for the restart, then go to the new address (the domain may take a moment to get its certificate).
+  const target = new URL(r.url, location.href);
+  const sameOrigin = target.origin === location.origin;
+  for (let i = 0; i < 30; i++) {
+    await new Promise((res) => setTimeout(res, 1000));
+    try { if ((await fetch('/healthz', { cache: 'no-store' })).ok && i > 1) break; } catch (e) { /* still restarting */ }
+  }
+  if (sameOrigin) location.href = '/login';
+  else { $('error').innerHTML = `Fertig. Weiter zu <a href="${esc(target.href)}login" style="color:var(--s1)">${esc(target.href)}</a> (das Zertifikat kann beim ersten Aufruf einen Moment brauchen).`; }
+};
+
+// Signed in already (settings) or first run (needs the token)?
+(async () => {
+  const c = await api('/setup/config');
+  if (!c.error) { load(c); show(0); } else { show(0); $('token').focus(); }
+})();
+</script>
+</body>
+</html>

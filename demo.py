@@ -1,4 +1,4 @@
-"""Made-up data for `python3 server.py --demo`: the same shape as the real thing, nothing read from this Mac.
+"""Made-up data for `python3 server.py --demo`: the same shape as the real thing, nothing read from anywhere.
 
 Everything moves with the clock, so the graphs scroll and the workers come and go like they would for real.
 """
@@ -70,24 +70,33 @@ def payload(title):
         "history": {"t": [int(t * 1000) for t in ts], "cpu": cpu, "mem": mem, "rx": rx, "tx": tx, "disk": disk, "sab": sab},
         "upcoming": [{"kind": "Episode", "title": f"{SHOWS[i][0]} S0{i + 1}E0{i + 4}", "when": iso(ms + (i + 1) * 86_400_000)} for i in range(3)]
         + [{"kind": "Movie", "title": MOVIES[5][0], "when": iso(ms + 5 * 86_400_000)}],
-        "system": {"host": "demo", "cpu_name": "Apple M2", "cores": 8, "macos": "15.0", "model": "Mac14,3", "booted": ms - 3 * 86_400_000 - 7_200_000,
+        "system": {"host": "pve-demo", "cpu_name": "AMD Ryzen 7 5700G", "cores": 16, "pve": "pve-manager/8.3.0", "booted": ms - 3 * 86_400_000 - 7_200_000,
                    "speed_limit": 100, "cpu": {"user": cpu[-1] * 0.7, "system": cpu[-1] * 0.3, "idle": 100 - cpu[-1]}, "load": [2.1, 1.8, 1.6],
-                   "memory": {"total": 16 * GB, "used": int(mem[-1] / 100 * 16 * GB), "free_level": 40, "swap_total": 0, "swap_used": 0}},
+                   "memory": {"total": 64 * GB, "used": int(mem[-1] / 100 * 64 * GB), "free_level": 40, "swap_total": 0, "swap_used": 0}},
         "services": services,
         "cinema": {"enabled": True, "ok": True, "converting": 0, "profiles": PEOPLE, "streams": streams, "watched": watched, "missing_drives": []},
         "sab": {"ok": True, "version": "4.3.3", "paused": False, "speed": sab[-1], "left": 21 * GB, "eta": "0:34:10", "queueTotal": 12, "queue": queue, "failed": 0,
                 "totals": {"day": 38 * GB, "week": 212 * GB, "month": 840 * GB, "total": 9800 * GB}},
         "radarr": {"ok": True, "version": "5.0", "library": {"total": 412, "have": 398, "size": 3900 * GB}, "missing": 14,
                    "recent": [{"title": n, "year": y, "poster": poster("m", i), "size": 8 * GB, "quality": "Bluray-1080p", "when": iso(ms - (i + 1) * 5_400_000)} for i, (n, y, *_) in enumerate(MOVIES)],
-                   "upcoming": [], "health": [], "roots": [{"path": "/Volumes/Media/Movies", "ok": True}]},
+                   "upcoming": [], "health": [], "roots": [{"path": "/data/media/movies", "ok": True}]},
         "sonarr": {"ok": True, "version": "4.0", "library": {"total": 64, "have": 2210, "episodes": 2380, "size": 5100 * GB}, "missing": 30,
                    "recent": [{"title": n, "sub": e, "poster": poster("s", i), "quality": "WEBDL-1080p", "when": iso(ms - (i + 1) * 7_200_000)} for i, (n, e, *_) in enumerate(SHOWS)],
-                   "upcoming": [], "health": [], "roots": [{"path": "/Volumes/Media/TV", "ok": True}]},
+                   "upcoming": [], "health": [], "roots": [{"path": "/data/media/tv", "ok": True}]},
         "prowlarr": {"ok": True, "version": "1.0", "indexers": 6, "enabled": 6, "health": []},
         "bazarr": {"ok": True, "health": []},
         "activity": activity,
         "network": {"lan": "", "vpn": False, "online": True, "ping": 14.0},
-        "disks": [{"name": "Macintosh HD", "total": 494 * GB, "free": 180 * GB}, {"name": "Media", "total": 8000 * GB, "free": 2700 * GB}],
+        "disks": [{"name": "local-zfs", "total": 900 * GB, "free": 610 * GB}, {"name": "media", "total": 16000 * GB, "free": 2700 * GB}],
+        "proxmox": {"ok": True, "guests": []},
+        "home": {"enabled": True, "side": "right", "layout": "grid", "tiles": [
+            {"name": n, "url": "", "icon": ic, "check": f"192.168.1.{20 + i}:{port}", "up": True, "ms": 1 + i % 3,
+             "guest": {"id": 101 + i, "name": n.lower(), "type": "lxc", "status": "running", "cpu": round(wave(now, 30 + i * 7, 1, 35, i), 1),
+                       "mem": int(wave(now, 90, 0.3, 1.6, i) * GB), "maxmem": 2 * GB, "rx": int(rx[-1] * (0.6 if n == "SABnzbd" else 0.05)),
+                       "tx": int(tx[-1] * 0.2), "uptime": 86_400 * (3 + i)}}
+            for i, (n, ic, port) in enumerate([("Radarr", "🎬", 7878), ("Sonarr", "📺", 8989), ("SABnzbd", "📥", 8080), ("Jellyfin", "🍿", 8096)])
+        ] + [{"name": "Home Assistant", "url": "", "icon": "🏠", "check": "192.168.1.40:8123", "up": True, "ms": 2, "guest": None},
+             {"name": "NAS", "url": "", "icon": "🗄️", "check": "192.168.1.5:5000", "up": False, "ms": None, "guest": None}]},
     })
 
 

@@ -1,9 +1,35 @@
 {
   "title": "Media Server Dashboard",
   "port": 8900,
-  "radarr_config": "~/Library/Application Support/Radarr/config.xml",
-  "sonarr_config": "~/.config/Sonarr/config.xml",
-  "prowlarr_config": "~/Library/Application Support/Prowlarr/config.xml",
-  "bazarr_config": "/Applications/bazarr/data/config/config.yaml",
-  "sabnzbd_config": "~/Library/Application Support/SABnzbd/sabnzbd.ini"
+  "bind": "0.0.0.0",
+  "trusted_proxies": [],
+  "domain": "",
+  "proxmox": {
+    "url": "https://192.168.1.10:8006",
+    "node": "pve",
+    "token_id": "dashboard@pve!msd",
+    "token_secret": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+    "verify_tls": true,
+    "ca_file": "/var/lib/media-server-dashboard/pve-root-ca.pem"
+  },
+  "storages": [],
+  "watch_guests": ["101", "102"],
+  "apps": {
+    "radarr": { "url": "http://192.168.1.21:7878", "api_key": "..." },
+    "sonarr": { "url": "http://192.168.1.22:8989", "api_key": "..." },
+    "prowlarr": { "url": "http://192.168.1.23:9696", "api_key": "..." },
+    "bazarr": { "url": "http://192.168.1.24:6767", "api_key": "..." },
+    "sabnzbd": { "url": "http://192.168.1.25:8080", "api_key": "..." }
+  },
+  "custom_apps": [
+    { "name": "Lidarr", "kind": "arr", "api_version": "v1", "url": "http://192.168.1.26:8686", "api_key": "..." },
+    { "name": "Jellyfin", "kind": "generic", "url": "http://192.168.1.30:8096", "auth": "header", "auth_name": "X-Emby-Token", "api_key": "...", "health_path": "/System/Info" }
+  ],
+  "home": {
+    "enabled": true, "side": "right", "layout": "grid", "start": false,
+    "tiles": [
+      { "name": "Jellyfin", "url": "http://192.168.1.30:8096", "check": "", "guest": "105", "icon": "🍿" },
+      { "name": "NAS", "url": "", "check": "192.168.1.5:5000", "guest": "", "icon": "🗄️" }
+    ]
+  }
 }
