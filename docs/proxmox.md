@@ -60,6 +60,10 @@ Release-Policy prüfen, Archiv laden und SHA-256 vergleichen, Einstellungen sich
 (`/var/lib/media-server-dashboard-updater/backups`, die letzten 3), neue Version neben der alten
 entpacken, umschalten, neu starten, Gesundheitscheck. Bei einem Fehler läuft wieder die alte Version.
 
+Der Container braucht dafür ausgehend HTTPS zu `api.github.com`, `github.com` und den Download-Hosts
+von GitHub (`*.githubusercontent.com`) sowie zu `tuf-repo-cdn.sigstore.dev` (die Vertrauenswurzel, mit der
+cosign Signaturen prüft). Blockt deine Firewall das, meldet Settings → Updates „Signatur ungültig“ mit dem Grund.
+
 Von Hand, im Container:
 
 ```bash

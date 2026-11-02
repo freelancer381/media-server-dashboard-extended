@@ -126,6 +126,18 @@ jobs:
           DIGEST: ${{ steps.image.outputs.digest }}
         run: cosign sign --yes "$IMAGE@$DIGEST"
 
+      - name: Verify the image signature
+        env:
+          DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          # The same check as in docs/docker.md, so a release never ships an image nobody can verify.
+          cosign verify "$IMAGE@$DIGEST" \
+            --certificate-identity "https://github.com/$GITHUB_REPOSITORY/.github/workflows/release.yml@$GITHUB_REF" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-github-workflow-repository "$GITHUB_REPOSITORY" \
+            --certificate-github-workflow-ref "$GITHUB_REF" \
+            --certificate-github-workflow-trigger push > /dev/null
+
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}

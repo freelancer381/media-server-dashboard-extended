@@ -5,6 +5,9 @@ becomes its GitHub release text, so write it for the people who run the dashboar
 
 ## Unreleased
 
+- The release workflow now also verifies the container image's signature before publishing.
+- Docs: which hosts a firewall must allow for updates and image pulls.
+
 ## 0.2.0 - 2026-11-02
 
 First release of the extended edition.

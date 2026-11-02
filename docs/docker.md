@@ -83,6 +83,9 @@ cosign verify ghcr.io/lcsfls/media-server-dashboard-extended:0.2.0 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
+Zum Laden des Images braucht der Docker-Host Zugriff auf `ghcr.io` und `pkg-containers.githubusercontent.com`;
+für `cosign verify` zusätzlich auf `tuf-repo-cdn.sigstore.dev`.
+
 ## Selbst bauen
 
 ```bash
