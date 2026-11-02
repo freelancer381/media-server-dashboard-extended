@@ -63,6 +63,47 @@ table.home td.n a, table.home td.n span { color: var(--text); text-decoration: n
 table.home td.n a:hover { text-decoration: underline; }
 table.home .icon { width: 22px; height: 22px; font-size: 14px; border-radius: 6px; }
 .empty { color: var(--muted); font-size: 13px; }
+/* live feed: chat lines from the workers, and the team board */
+#feed { position: absolute; left: 12px; bottom: 34px; width: 350px; max-height: 46%; z-index: 3; border-radius: 18px; background: rgba(16, 20, 36, .84); display: flex; flex-direction: column; overflow: hidden; }
+#feed header { display: flex; align-items: center; gap: 4px; padding: 8px 8px 6px 10px; margin: 0; border-bottom: 1px solid rgba(255, 255, 255, .08); }
+#feed header button { background: none; border: 0; color: var(--muted); font: inherit; font-size: 12.5px; font-weight: 600; padding: 4px 9px; border-radius: 9px; cursor: pointer; }
+#feed header button[aria-selected="true"] { background: rgba(255, 255, 255, .12); color: var(--text); }
+#feed header .live { margin-left: auto; display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; }
+#feed header .live i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+#feed header .live.on i { background: var(--good); box-shadow: 0 0 0 0 rgba(48, 209, 88, .6); animation: pulse 2s infinite; }
+@keyframes pulse { 70% { box-shadow: 0 0 0 7px rgba(48, 209, 88, 0); } 100% { box-shadow: 0 0 0 0 rgba(48, 209, 88, 0); } }
+#feed .fold { padding: 4px 7px; }
+#feed.closed .pane { display: none; }
+#feed .pane { overflow-y: auto; padding: 6px 8px 8px; display: grid; gap: 4px; align-content: start; min-height: 0; }
+#feed .pane[hidden] { display: none; }
+.msg { display: grid; grid-template-columns: 28px 1fr auto; gap: 8px; align-items: start; padding: 6px 7px; border-radius: 12px; background: rgba(255, 255, 255, .04); border-left: 3px solid transparent; }
+.msg.new { animation: slidein .35s ease-out; }
+@keyframes slidein { from { opacity: 0; transform: translateY(8px); } }
+.msg.warning { border-left-color: var(--warning); } .msg.error { border-left-color: var(--critical); }
+.msg.game { background: linear-gradient(90deg, rgba(250, 200, 60, .16), rgba(255, 255, 255, .04)); border-left-color: #f6c544; }
+.av { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 12px; color: #1b1f2e; }
+.msg .hd { display: flex; gap: 6px; align-items: baseline; font-size: 12px; }
+.msg .hd b { font-weight: 600; } .msg .hd small { color: var(--muted); font-size: 10.5px; } .msg .hd time { color: var(--muted); font-size: 10.5px; margin-left: auto; }
+.msg p { margin: 1px 0 0; font-size: 12.5px; line-height: 1.35; overflow-wrap: anywhere; }
+.msg .xp { font-style: normal; font-size: 10.5px; font-weight: 700; color: #f6c544; white-space: nowrap; padding-top: 2px; }
+.team-top { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 12px; color: var(--muted); padding: 2px 2px 6px; }
+.team-top b { color: var(--text); }
+.player { display: grid; grid-template-columns: 22px 28px 1fr auto; gap: 8px; align-items: center; padding: 6px 7px; border-radius: 12px; background: rgba(255, 255, 255, .04); }
+.player .rank { color: var(--muted); font-size: 12px; text-align: center; font-weight: 700; }
+.player .nm { font-size: 12.5px; font-weight: 600; display: flex; gap: 6px; align-items: baseline; }
+.player .nm small { color: var(--muted); font-weight: 500; font-size: 11px; }
+.player .xpbar { height: 5px; border-radius: 3px; background: rgba(255, 255, 255, .12); margin-top: 4px; overflow: hidden; }
+.player .xpbar i { display: block; height: 100%; background: linear-gradient(90deg, #f6c544, #ff9f43); }
+.player .bd { font-size: 14px; letter-spacing: 1px; text-align: right; max-width: 92px; }
+.player .today { font-size: 10.5px; color: var(--muted); margin-top: 2px; }
+/* speech bubbles above the workers */
+.say { max-width: 220px; padding: 5px 10px; border-radius: 12px; background: #fff; color: #1b1f2e; font-size: 11.5px; font-weight: 500; line-height: 1.3; box-shadow: 0 6px 18px rgba(0, 0, 0, .25); position: relative; white-space: normal; text-align: center; animation: pop .25s ease-out; }
+.say::after { content: ''; position: absolute; left: 50%; bottom: -5px; width: 10px; height: 10px; background: #fff; transform: translateX(-50%) rotate(45deg); }
+.say.warning { background: #fff4d6; } .say.warning::after { background: #fff4d6; }
+.say.error { background: #ffe1df; } .say.error::after { background: #ffe1df; }
+@keyframes pop { from { opacity: 0; transform: scale(.8) translateY(6px); } }
+#toasts { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 50; display: grid; gap: 8px; pointer-events: none; }
+.toast { padding: 10px 16px; border-radius: 14px; background: linear-gradient(135deg, rgba(246, 197, 68, .95), rgba(255, 159, 67, .95)); color: #2a1a00; font-weight: 700; font-size: 14px; box-shadow: 0 10px 30px rgba(0, 0, 0, .35); animation: pop .3s ease-out; }
 #scene canvas { display: block; width: 100%; height: 100%; cursor: grab; }
 #scene canvas:active { cursor: grabbing; }
 #labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 1; }
@@ -84,6 +125,7 @@ table.home .icon { width: 22px; height: 22px; font-size: 14px; border-radius: 6p
   #home { width: auto; height: auto; min-height: 0; overflow: visible; }
 }
 @media (max-width: 700px) {
+  #feed { left: 8px; right: 8px; width: auto; bottom: 8px; max-height: 60%; }
   #page { padding: 16px 16px 20px; }
   #scene { height: 115vw; min-height: 0; }
   .hint { position: static; margin-top: 4px; }
@@ -101,12 +143,20 @@ table.home .icon { width: 22px; height: 22px; font-size: 14px; border-radius: 6p
 <div id="page">
   <header><h1>The Office</h1><span id="summary"></span><a class="glass" href="/">← Dashboard</a></header>
   <div id="stage">
-    <div id="scene"><div id="labels"></div><div class="hint">Drag to turn the room · scroll or pinch to zoom</div></div>
+    <div id="scene"><div id="labels"></div><div class="hint">Drag to turn the room · scroll or pinch to zoom</div>
+      <section id="feed" class="glass" aria-label="Live-Feed">
+        <header role="tablist"><button role="tab" aria-selected="true" data-tab="chat">💬 Live</button><button role="tab" aria-selected="false" data-tab="team" id="teamTab">🏆 Team</button>
+          <span class="live" id="liveDot" title="Live-Verbindung"><i></i><span>live</span></span><button class="fold" id="feedFold" aria-label="Feed ein- oder ausklappen">▾</button></header>
+        <div class="pane" id="chat" role="tabpanel" aria-live="polite"><div class="empty">Noch nichts passiert. Sobald deine Apps etwas tun, steht es hier.</div></div>
+        <div class="pane" id="team" role="tabpanel" hidden></div>
+      </section>
+    </div>
     <aside id="home" class="glass" hidden aria-label="Start page"></aside>
   </div>
   <div class="sr" id="srStatus" aria-live="polite"></div>
 </div>
 <div id="tip"></div>
+<div id="toasts" aria-live="polite"></div>
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from '/vendor/OrbitControls.js';
@@ -1348,6 +1398,100 @@ function renderHome(d) {
   if (html !== homeKey) { homeKey = html; aside.innerHTML = html; }
 }
 
+// ---------- live feed: chat lines from the workers, the team board, bubbles above their heads ----------
+let game = { enabled: true, players: [], today: { counts: {}, xp: 0 }, clean_days: 0 };
+const KIND_ICONS = { import: '📦', upgrade: '⬆️', download: '📥', grab: '🛒', subtitle: '💬', play: '▶️', search: '🔎' };
+const colorOf = (name) => (STAFF[name] && STAFF[name].color) || ['#7fe3d0', '#f6d77a', '#c9b8ff', '#a8d8ff', '#f7b8d4', '#d7f08a'][[...name].reduce((a, c) => a + c.charCodeAt(0), 0) % 6];
+const avatar = (name) => `<span class="av" style="background:${colorOf(name)}">${escH([...name][0] || '?')}</span>`;
+const playerOf = (name) => game.players.find((p) => p.name === name);
+const hhmm = (ms) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+let tab = 'chat';
+try { if (localStorage.getItem('feedClosed') === '1' || (localStorage.getItem('feedClosed') === null && innerWidth < 700)) $('feed').classList.add('closed'); } catch { /* storage blocked */ }
+function syncFold() { $('feedFold').textContent = $('feed').classList.contains('closed') ? '▴' : '▾'; }
+syncFold();
+$('feedFold').onclick = () => { const c = $('feed').classList.toggle('closed'); syncFold(); try { localStorage.setItem('feedClosed', c ? '1' : '0'); } catch { /* fine */ } };
+document.querySelectorAll('#feed [role=tab]').forEach((b) => { b.onclick = () => {
+  tab = b.dataset.tab;
+  document.querySelectorAll('#feed [role=tab]').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
+  $('chat').hidden = tab !== 'chat'; $('team').hidden = tab !== 'team';
+  $('feed').classList.remove('closed'); syncFold();
+  if (tab === 'team') renderGame();
+}; });
+function msgHtml(e, fresh) {
+  const p = playerOf(e.source);
+  const special = e.kind === 'level' || e.kind === 'badge';
+  const cls = ['msg', fresh ? 'new' : '', special ? 'game' : '', e.level === 'warning' ? 'warning' : '', e.level === 'error' ? 'error' : ''].filter(Boolean).join(' ');
+  return `<div class="${cls}">${avatar(e.source)}<div><div class="hd"><b>${escH(e.source)}</b>${p && game.enabled ? `<small>Lvl ${p.level}</small>` : ''}<time>${hhmm(e.ts)}</time></div>
+    <p>${escH(e.icon || '')} ${escH(e.text)}</p></div>${e.xp && game.enabled ? `<em class="xp">+${e.xp} XP</em>` : '<span></span>'}</div>`;
+}
+const EMPTY_FEED = '<div class="empty">Noch nichts passiert. Sobald deine Apps etwas tun, steht es hier.</div>';
+function feedInit(events) {
+  const list = events.slice(-60);
+  $('chat').innerHTML = list.length ? list.reverse().map((e) => msgHtml(e, false)).join('') : EMPTY_FEED;
+}
+function addMsg(e) {
+  const empty = $('chat').querySelector('.empty');
+  if (empty) empty.remove();
+  $('chat').insertAdjacentHTML('afterbegin', msgHtml(e, true));
+  while ($('chat').children.length > 60) $('chat').lastElementChild.remove();
+  say(e);
+  if (e.kind === 'level' || e.kind === 'badge') toast(`${e.icon} ${e.source} ${e.text}`);
+}
+function say(e) {
+  const p = people[e.source];
+  const label = p ? p.label : e.source === 'Proxmox' ? dcTag : null;
+  if (!label || (p && !p.root.visible)) return;
+  label.querySelectorAll('.say').forEach((x) => x.remove());
+  const b = document.createElement('div');
+  b.className = 'say ' + (e.level === 'error' ? 'error' : e.level === 'warning' ? 'warning' : '');
+  b.textContent = `${e.icon || ''} ${e.text}`.trim();
+  label.prepend(b);
+  setTimeout(() => b.remove(), 6500);
+}
+function toast(text) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = text;
+  $('toasts').append(t);
+  setTimeout(() => t.remove(), 4500);
+}
+function renderGame() {
+  $('teamTab').hidden = !game.enabled;
+  if (!game.enabled || tab !== 'team') return;
+  const c = game.today.counts || {};
+  const top = Object.entries(KIND_ICONS).filter(([k]) => c[k]).map(([k, i]) => `<span>${i} <b>${c[k]}</b></span>`).join('');
+  $('team').innerHTML = `<div class="team-top"><span>Heute: <b>${game.today.xp} XP</b></span>${top}<span>🛡️ <b>${game.clean_days}</b> ${game.clean_days === 1 ? 'Tag' : 'Tage'} ohne Fehler</span></div>`
+    + (game.players.length ? game.players.map((p, i) => {
+      const span = Math.max(1, p.next - p.base), pct = Math.min(100, (p.xp - p.base) / span * 100);
+      const today = Object.entries(p.today.counts || {}).filter(([k]) => KIND_ICONS[k]).map(([k, v]) => `${KIND_ICONS[k]} ${v}`).join(' · ');
+      return `<div class="player"><span class="rank">${['🥇', '🥈', '🥉'][i] || i + 1}</span>${avatar(p.name)}<div><div class="nm">${escH(p.name)}<small>Level ${p.level} · ${p.xp} XP</small></div>
+        <div class="xpbar" title="${p.xp - p.base} von ${span} XP bis Level ${p.level + 1}"><i style="width:${pct.toFixed(0)}%"></i></div>${today ? `<div class="today">heute ${today}</div>` : ''}</div>
+        <span class="bd">${p.badges.map((b) => `<span data-tip="${escH(b.name)}: ${escH(b.about)}">${b.emoji}</span>`).join('')}</span></div>`;
+    }).join('') : '<div class="empty">Noch keine Punkte. Jede erledigte Aufgabe bringt XP.</div>');
+}
+
+// Live data over Server-Sent Events; plain polling while the stream isn't available.
+let es = null, polling = null;
+function setLive(on) { $('liveDot').classList.toggle('on', on); $('liveDot').querySelector('span').textContent = on ? 'live' : 'offline'; }
+function startPolling() { if (!polling) { polling = setInterval(tick, 2000); tick(); } }
+function startStream() {
+  if (!window.EventSource) return startPolling();
+  es = new EventSource('/api/stream');
+  es.addEventListener('hello', (e) => {
+    const h = JSON.parse(e.data);
+    game = h.game; feedInit(h.events); renderGame(); setLive(true);
+    if (polling) { clearInterval(polling); polling = null; }
+  });
+  es.addEventListener('data', (e) => { const d = JSON.parse(e.data); render(d); renderHome(d); });
+  es.addEventListener('feed', (e) => addMsg(JSON.parse(e.data)));
+  es.addEventListener('game', (e) => { game = JSON.parse(e.data); renderGame(); });
+  es.addEventListener('reset', () => feedInit([]));
+  es.onerror = () => {
+    setLive(false);
+    if (es.readyState === EventSource.CLOSED) { es = null; startPolling(); setTimeout(startStream, 15000); }
+  };
+}
+
 async function tick() {
   if (document.hidden) return;
   try {
@@ -1428,7 +1572,7 @@ resize();
 frame();
 document.addEventListener('visibilitychange', tick);
 tick();
-setInterval(tick, 2000);
+startStream();
 window.office = { people, render, controls, board, renderer, scene, camera };
 </script>
 </body>

@@ -57,6 +57,17 @@ button:disabled { opacity: .5; cursor: default; }
 .iconPick input[type=text] { width: 52px; text-align: center; padding: 6px 4px; }
 .iconPick button { padding: 4px 8px; font-size: 12px; font-weight: 500; }
 .mini { padding: 5px 9px; font-size: 12px; font-weight: 500; }
+.hookrow { display: grid; grid-template-columns: 110px 1fr auto; gap: 8px 10px; align-items: center; padding: 8px 0; border-top: 1px solid rgba(255, 255, 255, .08); }
+.hookrow code { display: block; overflow-x: auto; white-space: nowrap; padding: 6px 8px; }
+.hookrow .how { grid-column: 2 / 4; color: var(--muted); font-size: 12px; }
+@media (max-width: 600px) { .hookrow { grid-template-columns: 1fr auto; } .hookrow b { grid-column: 1 / 3; } .hookrow .how { grid-column: 1 / 3; } }
+pre.tpl { margin: 0; padding: 8px 10px; background: rgba(0, 0, 0, .25); border-radius: 10px; font-size: 11.5px; overflow-x: auto; white-space: pre-wrap; }
+.card { border: 1px solid var(--edge); border-radius: 14px; padding: 12px 14px; background: rgba(255, 255, 255, .03); display: grid; gap: 8px; }
+.notes { white-space: pre-wrap; font-size: 13px; color: var(--text); max-height: 260px; overflow: auto; background: rgba(0, 0, 0, .2); border-radius: 10px; padding: 10px; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+.steps li::before { display: inline-block; width: 22px; content: '○'; color: var(--muted); }
+.steps li.running::before { content: '⏳'; } .steps li.done::before { content: '✓'; color: var(--good); } .steps li.failed::before { content: '✕'; color: var(--critical); }
+pre.log { margin: 0; max-height: 200px; overflow: auto; font-size: 11.5px; background: rgba(0, 0, 0, .3); border-radius: 10px; padding: 8px 10px; }
 #error { color: var(--critical); min-height: 20px; }
 .summary { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; font-size: 13.5px; }
 .summary dt { color: var(--muted); }
@@ -169,6 +180,45 @@ code { background: rgba(255, 255, 255, .1); padding: 1px 5px; border-radius: 6px
     </div>
   </section>
 
+  <section class="glass" data-step="Live-Feed" id="s-live">
+    <h2>Live-Feed</h2>
+    <p>Was deine Apps tun, erscheint im Büro als Chat: geholt, importiert, Untertitel gefunden, jemand schaut etwas. Einiges erkennt das Dashboard selbst; mit Webhooks kommt alles sofort und vollständig an.</p>
+    <label class="check"><input id="gameOn" type="checkbox"> Punkte, Level und Abzeichen für die Mitarbeiter (Team-Tafel im Büro)</label>
+    <div id="hookNone" class="hint" hidden>Die Webhook-Adresse wird beim Speichern erzeugt. Danach findest du sie hier in den Einstellungen.</div>
+    <div id="hookBox" class="body" hidden>
+      <div class="row"><label style="flex:1">Adresse, unter der deine Apps das Dashboard erreichen
+        <select id="hookBase"></select></label></div>
+      <div id="hookRows"></div>
+      <details><summary class="hint" style="cursor:pointer">Jellyfin-Vorlage und eigene Tools</summary>
+        <div class="body" style="margin-top:8px">
+          <p class="hint">Jellyfin: Plugin „Webhook“ → Add Generic Destination → URL von oben, Benachrichtigungen z. B. Playback Start und Item Added, Header <code>Content-Type: application/json</code>, Vorlage:</p>
+          <pre class="tpl">{"NotificationType":"{{NotificationType}}","Name":"{{Name}}","SeriesName":"{{SeriesName}}","NotificationUsername":"{{NotificationUsername}}"}</pre>
+          <p class="hint">Eigene Skripte schicken einfach JSON:</p>
+          <pre class="tpl" id="curlExample"></pre>
+        </div></details>
+      <label class="check"><input id="newHook" type="checkbox"> Beim Speichern eine neue Webhook-Adresse erzeugen (die alte funktioniert dann nicht mehr)</label>
+    </div>
+    <div class="row"><button class="ghost" id="hookTest">Test-Nachricht senden</button><button class="ghost" id="gameReset" hidden>Punkte zurücksetzen</button><span class="status" id="hookStatus"></span></div>
+  </section>
+
+  <section class="glass" data-step="Updates" id="s-updates">
+    <h2>Updates</h2>
+    <p id="updVersion"></p>
+    <div id="updUnmanaged" class="card" hidden></div>
+    <div id="updManaged" class="body" hidden>
+      <div class="row"><button class="ghost" id="updCheck">Nach Updates suchen</button><span class="status" id="updCheckStatus"></span></div>
+      <div id="updResult" class="card" hidden></div>
+      <div id="updAvail" class="card" hidden></div>
+      <div id="updRun" class="card" hidden><b>Update läuft</b><ul class="steps" id="updSteps"></ul><pre class="log" id="updLog"></pre></div>
+      <div id="updRefused" class="hint" hidden></div>
+      <div class="grid2">
+        <label class="check"><input id="updAuto" type="checkbox"> Neue Versionen automatisch installieren</label>
+        <label>um<select id="updHour"></select></label>
+      </div>
+      <p class="hint">Installiert werden nur Releases, die der Release-Workflow von <span id="updRepo"></span> signiert hat (Sigstore). Vorher werden die Einstellungen gesichert; startet die neue Version nicht sauber, läuft automatisch wieder die alte.</p>
+    </div>
+  </section>
+
   <section class="glass" data-step="Fertig" id="s-done">
     <h2>Zusammenfassung</h2>
     <dl class="summary" id="summary"></dl>
@@ -222,6 +272,7 @@ function show(i) {
   $('prev').disabled = step === 0 || (all[0].id === 's-token' && step === 1);
   $('next').hidden = isDone;
   if (isDone) renderSummary();
+  if (all[step].id === 's-updates') pollUpdates(true);
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 $('steps').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b && cfg) show(+b.dataset.k); });
@@ -424,6 +475,119 @@ $('tilesFromApps').onclick = () => {
   }
 };
 
+// ---------- live feed ----------
+const HOOK_APPS = [
+  ['Radarr', 'Settings → Connect → + → Webhook. URL einfügen, Methode POST; Auslöser On Grab, On File Import, On File Upgrade, On Health Issue, On Health Restored.'],
+  ['Sonarr', 'Wie Radarr: Settings → Connect → + → Webhook.'],
+  ['Prowlarr', 'Settings → Connect → + → Webhook (Grab, Health).'],
+  ['Lidarr', 'Settings → Connect → + → Webhook.'],
+  ['Readarr', 'Settings → Connect → + → Webhook.'],
+  ['Bazarr', 'Settings → Notifications → Apprise-URL hinzufügen (json:// statt http://, jsons:// statt https://).', true],
+  ['SABnzbd', 'Config → Notifications → Apprise aktivieren, URL eintragen (json:// bzw. jsons://), „Job finished“ und „Job failed“ anhaken.', true],
+  ['Jellyfin', 'Plugin „Webhook“ → Generic Destination (Vorlage unten).'],
+];
+function hookUrl(app, apprise) {
+  const base = $('hookBase').value.replace(/\/$/, '');
+  const url = `${base}/hook/${cfg.webhook.token}/${encodeURIComponent(app)}`;
+  return apprise ? url.replace(/^http(s?):/, (m, s) => (s ? 'jsons:' : 'json:')) : url;
+}
+function renderHooks() {
+  const has = !!cfg.webhook.token;
+  $('hookNone').hidden = has; $('hookBox').hidden = !has;
+  if (!has) return;
+  $('hookRows').innerHTML = HOOK_APPS.map(([name, how, apprise]) => {
+    const u = hookUrl(name, apprise);
+    return `<div class="hookrow"><b>${esc(name)}</b><code>${esc(u)}</code><button class="ghost mini copy" data-u="${esc(u)}">Kopieren</button><span class="how">${esc(how)}</span></div>`;
+  }).join('');
+  $('curlExample').textContent = `curl -X POST ${hookUrl('Backup')} \\\n  -H 'Content-Type: application/json' \\\n  -d '{"text": "Backup fertig", "kind": "info", "level": "success"}'`;
+}
+$('hookRows').addEventListener('click', async (e) => {
+  const b = e.target.closest('.copy');
+  if (!b) return;
+  try { await navigator.clipboard.writeText(b.dataset.u); b.textContent = 'Kopiert ✓'; } catch { b.textContent = 'Bitte markieren'; }
+  setTimeout(() => { b.textContent = 'Kopieren'; }, 1500);
+});
+$('hookBase').addEventListener('change', renderHooks);
+$('hookTest').onclick = async () => {
+  setStatus($('hookStatus'), 'busy', 'Sende …');
+  const r = await api('/setup/test', { what: 'hook', source: 'Radarr' });
+  setStatus($('hookStatus'), r.ok ? 'ok' : 'err', r.ok ? '✓ Gesendet: im Büro erscheint jetzt eine Nachricht von Radarr' : '✕ ' + r.error);
+};
+$('gameReset').onclick = async () => {
+  if (!confirm('Alle Punkte, Level, Abzeichen und den Feed zurücksetzen?')) return;
+  const r = await api('/api/game/reset', {});
+  setStatus($('hookStatus'), r.ok ? 'ok' : 'err', r.ok ? '✓ Zurückgesetzt' : '✕ ' + r.error);
+};
+
+// ---------- updates ----------
+for (let h = 0; h < 24; h++) $('updHour').insertAdjacentHTML('beforeend', `<option value="${h}">${String(h).padStart(2, '0')}:00 Uhr</option>`);
+let updTimer = null, upd = null;
+const RESULTS = { succeeded: ['ok', '✓ Update auf %s installiert.'], rolled_back: ['err', '↩ Die neue Version startete nicht sauber; %f läuft wieder.'],
+  failed: ['err', '✕ Update fehlgeschlagen. Die bisherige Version läuft weiter.'], refused: ['err', '✕ Update abgelehnt, es wurde nichts geändert.'],
+  attention: ['err', '⚠ Update braucht Hilfe: bitte im Container „systemctl status media-server-dashboard“ prüfen.'] };
+function renderUpdates(u) {
+  upd = u;
+  $('updVersion').innerHTML = `Installiert: <b>${esc(u.version)}</b>${u.repo ? ` · Quelle <a href="https://github.com/${esc(u.repo)}/releases" target="_blank" rel="noopener" style="color:var(--s1)">${esc(u.repo)}</a> · Kanal ${esc(u.channel)}` : ''}`;
+  $('updManaged').hidden = !u.managed; $('updUnmanaged').hidden = u.managed;
+  if (!u.managed) {
+    const n = u.notice;
+    $('updUnmanaged').innerHTML = (n ? `<b>Version ${esc(n.version)} ist erschienen.</b> <a href="${esc(n.url)}" target="_blank" rel="noopener" style="color:var(--s1)">Was ist neu?</a><br>` : '')
+      + (u.mode === 'docker' ? 'Im Docker-Container aktualisierst du so: <code>docker compose pull &amp;&amp; docker compose up -d</code> (Synology: Container Manager → Projekt → Aktion → Erstellen).'
+        : 'Diese Installation läuft ohne den Update-Dienst. Mit dem LXC-Installer (install-in-container.sh) gibt es Updates per Klick; sonst: neue Version holen und den Dienst neu starten.');
+    return;
+  }
+  $('updRepo').textContent = u.repo;
+  $('updAuto').checked = u.auto; $('updHour').value = String(u.hour);
+  const st = u.status || {}, last = st.last || {};
+  const running = st.state === 'running';
+  $('updRun').hidden = !running;
+  if (running) {
+    $('updSteps').innerHTML = (st.steps || []).map((s) => `<li class="${esc(s.state)}">${esc(s.name)}</li>`).join('');
+    $('updLog').textContent = (st.log || []).join('\n');
+    $('updLog').scrollTop = 1e6;
+  }
+  const res = RESULTS[last.result];
+  $('updResult').hidden = running || !res || u.acked === last.id;
+  if (res && !running) {
+    $('updResult').innerHTML = `<span class="status ${res[0]}">${esc(res[1].replace('%s', last.to).replace('%f', last.from))}</span>${last.error ? `<span class="hint">${esc(last.error)}</span>` : ''}
+      <span class="hint">${esc(last.requested_by || '')} · ${last.finished ? new Date(last.finished * 1000).toLocaleString() : ''}</span><div class="row"><button class="ghost mini" id="updAck">Gelesen</button></div>`;
+    $('updAck').onclick = async () => { await api('/api/update/ack', { id: last.id }); renderUpdates({ ...upd, acked: last.id }); };
+  }
+  const a = st.available;
+  $('updAvail').hidden = running || !a;
+  if (a && !running) {
+    $('updAvail').innerHTML = `<b>${esc(a.name || 'Version ' + a.version)}</b><span class="hint">Signatur geprüft ✓${a.published ? ' · ' + new Date(a.published).toLocaleDateString() : ''} · <a href="${esc(a.url)}" target="_blank" rel="noopener" style="color:var(--s1)">auf GitHub</a></span>
+      <div class="notes">${esc(a.notes || 'Keine Notizen.')}</div>
+      <div class="row"><input type="password" id="updPw" placeholder="Dein Passwort zur Bestätigung" autocomplete="current-password" style="flex:1;min-width:180px"><button id="updInstall">Version ${esc(a.version)} installieren</button></div><span class="status" id="updInstallStatus"></span>`;
+    $('updInstall').onclick = async () => {
+      setStatus($('updInstallStatus'), 'busy', 'Wird angestoßen …');
+      const r = await api('/api/update/install', { version: a.version, password: $('updPw').value });
+      setStatus($('updInstallStatus'), r.ok ? 'ok' : 'err', r.ok ? '✓ Das Update startet gleich.' : '✕ ' + r.error);
+      if (r.ok) pollUpdates(true);
+    };
+  }
+  const ref = st.refused || [];
+  $('updRefused').hidden = !ref.length;
+  $('updRefused').innerHTML = ref.map((x) => `Nicht installierbar: ${esc(x.version)} – ${esc(x.reason)}`).join('<br>');
+  setStatus($('updCheckStatus'), st.check_error ? 'err' : st.state === 'checking' || u.pending ? 'busy' : 'ok',
+    st.check_error ? '✕ ' + st.check_error : u.pending ? 'Anfrage liegt beim Update-Dienst, er startet gleich …' : st.state === 'checking' ? 'Suche …' : st.checked_at ? `Zuletzt gesucht: ${new Date(st.checked_at * 1000).toLocaleString()}${a ? '' : ' · aktuell'}` : '');
+}
+async function pollUpdates(fast) {
+  clearTimeout(updTimer);
+  if (!cfg || !cfg.setup_done || sections()[step].id !== 's-updates') return;
+  const u = await api('/api/update');
+  if (!u.error) renderUpdates(u);
+  updTimer = setTimeout(pollUpdates, fast || (u.status && u.status.state === 'running') || u.pending ? 1500 : 8000);
+}
+$('updCheck').onclick = async () => {
+  const r = await api('/api/update/check', {});
+  if (!r.ok) return setStatus($('updCheckStatus'), 'err', '✕ ' + r.error);
+  pollUpdates(true);
+};
+const saveUpdSettings = () => api('/api/update/settings', { auto: $('updAuto').checked, hour: +$('updHour').value });
+$('updAuto').addEventListener('change', saveUpdSettings);
+$('updHour').addEventListener('change', saveUpdSettings);
+
 // ---------- load and save ----------
 function load(c) {
   cfg = c;
@@ -460,6 +624,15 @@ function load(c) {
   $('tiles').innerHTML = '';
   for (const t of h.tiles) $('tiles').append(tileCard(t));
   syncHome();
+  $('gameOn').checked = c.game.enabled !== false;
+  $('gameReset').hidden = !c.setup_done;
+  const bases = [location.origin];
+  if (c.lan) bases.push(`http://${c.lan}${c.caddy ? '' : ':' + c.port}`);
+  if (c.domain) bases.push(`https://${c.domain}`);
+  $('hookBase').innerHTML = [...new Set(bases)].map((b) => `<option>${esc(b)}</option>`).join('');
+  renderHooks();
+  if (!c.setup_done) $('s-updates').dataset.skip = '1'; else $('s-updates').removeAttribute('data-skip');
+  if (c.setup_done && c.updates) renderUpdates(c.updates);
 }
 
 function collect() {
@@ -473,6 +646,7 @@ function collect() {
     domain: addrMode() === 'domain' ? $('domain').value.trim() : '', tls: document.querySelector('input[name=tls]:checked').value, ip_access: $('ipAccess').checked,
     proxmox: pveOn ? pveInput() : {}, storages: pveOn ? checked('pveStorages') : [], watch_guests: pveOn ? checked('pveGuests') : [],
     apps, custom_apps: [...document.querySelectorAll('#customApps .app')].map((el) => el.read()),
+    game: { enabled: $('gameOn').checked }, new_webhook_token: $('newHook').checked,
     home: { enabled: $('homeOn').checked, side: document.querySelector('input[name=side]:checked').value, layout: document.querySelector('input[name=layout]:checked').value,
       start: $('homeStart').checked, tiles: [...document.querySelectorAll('#tiles .tile')].map((el) => el.read()) },
   };
@@ -487,6 +661,7 @@ function renderSummary() {
     ['Proxmox', d.proxmox.url ? `${d.proxmox.url} · Node ${d.proxmox.node}` : 'nicht angebunden'],
     ['Laufwerke', d.proxmox.url ? (d.storages.join(', ') || 'alle') : '–'], ['Überwachte Gäste', d.watch_guests.join(', ') || '–'],
     ['Apps', on.join(', ') || 'keine'],
+    ['Live-Feed', `Gamification ${d.game.enabled ? 'an' : 'aus'}${d.new_webhook_token ? ' · neue Webhook-Adresse' : ''}`],
     ['Startseite', d.home.enabled ? `${d.home.side === 'left' ? 'links' : 'rechts'} vom Büro · ${d.home.layout === 'table' ? 'Tabelle' : 'Kacheln'} · ${d.home.tiles.length} Kachel(n)${d.home.start ? ' · nach Login' : ''}` : 'aus'],
   ];
   $('summary').innerHTML = rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
@@ -513,7 +688,11 @@ $('save').onclick = async () => {
 // Signed in already (settings) or first run (needs the token)?
 (async () => {
   const c = await api('/setup/config');
-  if (!c.error) { load(c); show(0); } else { show(0); $('token').focus(); }
+  if (!c.error) {
+    load(c);
+    const want = location.hash === '#updates' ? sections().findIndex((s) => s.id === 's-updates') : 0;
+    show(Math.max(0, want));
+  } else { show(0); $('token').focus(); }
 })();
 </script>
 </body>

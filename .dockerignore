@@ -1,0 +1,14 @@
+.git
+.github
+tests
+docs
+proxmox
+scripts
+updater
+data
+dist
+**/__pycache__
+config.json
+.secret
+setup-token.txt
+*.log

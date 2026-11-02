@@ -1,0 +1,6 @@
+{
+  "_comment": "Upgrade constraints of the NEXT release; reviewed with the code and signed into release.json. Update it in every release.",
+  "minimumFromVersion": null,
+  "requiresUpdater": ">=1.0.0",
+  "manualSteps": { "required": false, "summary": null, "url": null }
+}

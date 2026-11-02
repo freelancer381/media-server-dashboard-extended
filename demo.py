@@ -89,6 +89,7 @@ def payload(title):
         "network": {"lan": "", "vpn": False, "online": True, "ping": 14.0},
         "disks": [{"name": "local-zfs", "total": 900 * GB, "free": 610 * GB}, {"name": "media", "total": 16000 * GB, "free": 2700 * GB}],
         "proxmox": {"ok": True, "guests": []},
+        "version": "demo", "update": {"available": None, "state": "idle", "last": {}, "acked": True},
         "home": {"enabled": True, "side": "right", "layout": "grid", "tiles": [
             {"name": n, "url": "", "icon": ic, "check": f"192.168.1.{20 + i}:{port}", "up": True, "ms": 1 + i % 3,
              "guest": {"id": 101 + i, "name": n.lower(), "type": "lxc", "status": "running", "cpu": round(wave(now, 30 + i * 7, 1, 35, i), 1),
@@ -98,6 +99,31 @@ def payload(title):
         ] + [{"name": "Home Assistant", "url": "", "icon": "🏠", "check": "192.168.1.40:8123", "up": True, "ms": 2, "guest": None},
              {"name": "NAS", "url": "", "icon": "🗄️", "check": "192.168.1.5:5000", "up": False, "ms": None, "guest": None}]},
     })
+
+
+def events(live):
+    """Made-up chat lines for the office, every few seconds, like a busy evening."""
+    import random
+    script = [
+        ("Prowlarr", "search", "sucht: {m}", "info"),
+        ("Radarr", "grab", "hat {m} in Bluray-1080p geholt", "info"),
+        ("SABnzbd", "download", "hat {m} fertig geladen", "success"),
+        ("Radarr", "import", "hat {m} importiert", "success"),
+        ("Bazarr", "subtitle", "hat deutsche Untertitel für {m} gefunden", "success"),
+        ("Sonarr", "grab", "hat {s} geholt", "info"),
+        ("Sonarr", "import", "hat {s} importiert", "success"),
+        ("Home Cinema", "play", "{p} schaut {m}", "info"),
+        ("Radarr", "upgrade", "hat {m} auf Bluray-2160p verbessert", "success"),
+    ]
+    time.sleep(3)
+    if not live.recent(1):
+        live.emit("Radarr", "test", "Demo-Modus: hier erscheint, was deine Apps gerade tun 👋", "info")
+    while True:
+        source, kind, text, level = random.choice(script)
+        m = "%s (%d)" % random.choice(MOVIES)[:2]
+        s = "%s %s" % random.choice(SHOWS)[:2]
+        live.emit(source, kind, text.format(m=m, s=s, p=random.choice(PEOPLE)), level)
+        time.sleep(random.uniform(5, 11))
 
 
 def poster(path):

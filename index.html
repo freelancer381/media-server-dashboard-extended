@@ -103,7 +103,7 @@ h3:first-child { margin-top: 0; }
 </head>
 <body>
 <div id="page">
-  <header><h1>{{TITLE}}</h1><span id="overall"></span><div id="facts"></div><a class="glass office-link" href="/setup" title="Settings">⚙ Settings</a><a class="glass office-link" href="/logout">Sign out</a><a class="glass office-link" href="/office">Office →</a></header>
+  <header><h1>{{TITLE}}</h1><span id="overall"></span><a id="updateLink" class="glass office-link" href="/setup#updates" hidden></a><div id="facts"></div><a class="glass office-link" href="/setup" title="Settings">⚙ Settings</a><a class="glass office-link" href="/logout">Sign out</a><a class="glass office-link" href="/office">Office →</a></header>
   <div id="alerts"></div>
   <div class="row r4">
     <section class="card mini"><div><h2>CPU</h2><div class="hero" id="cpuV">-</div></div><div class="chart" id="cpuC"></div></section>
@@ -252,6 +252,11 @@ function render(d) {
   const errors = d.alerts.filter((a) => a.level === 'error').length;
   const allIssues = d.alerts.map((a) => `${a.source}: ${a.message}`).join('\n');
   put('overall', d.alerts.length ? `<span data-tip="${esc(allIssues)}" tabindex="0">${pill(errors ? 'error' : 'warning', `${d.alerts.length} ${d.alerts.length === 1 ? 'issue' : 'issues'}`)}</span>` : pill('', 'All good'));
+  // Updates: a newer release, one running, or the result of the last one until someone acknowledges it.
+  const up = d.update || {}, upLast = up.last || {}, ul = $('updateLink');
+  const RESULT = { succeeded: '✓ Update auf ' + upLast.to + ' installiert', rolled_back: '↩ Update zurückgerollt', failed: '✕ Update fehlgeschlagen', refused: '✕ Update abgelehnt', attention: '⚠ Update braucht Hilfe' };
+  const utext = up.state === 'running' ? '⏳ Update läuft …' : !up.acked && RESULT[upLast.result] ? RESULT[upLast.result] : up.available ? `⬆ Version ${up.available} verfügbar` : '';
+  ul.hidden = !utext; ul.textContent = utext;
   put('facts', [
     s.booted && `up ${span((d.now - s.booted) / 1000)}`, net.online === undefined ? '' : net.online ? `internet ${Math.round(net.ping)} ms` : 'offline', net.vpn && 'VPN on',
   ].filter(Boolean).map((f) => `<span>${esc(f)}</span>`).join(''));

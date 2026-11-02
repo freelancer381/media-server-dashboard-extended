@@ -17,6 +17,7 @@ import html
 import http.cookies
 import json
 import os
+import queue
 import re
 import secrets
 import socket
@@ -31,12 +32,20 @@ from collections import deque
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import live as livemod
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.environ.get("MSD_DATA") or HERE
 DEMO = "--demo" in sys.argv
 CONFIG_FILE = os.path.join(DATA, "config.json")
 SECRET_FILE = os.path.join(DATA, ".secret")
 SETUP_TOKEN_FILE = os.path.join(DATA, "setup-token.txt")
+try:
+    with open(os.path.join(HERE, "VERSION"), encoding="utf-8") as _f:
+        VERSION = _f.read().strip()
+except OSError:
+    VERSION = "0.0.0-dev"
+os.makedirs(DATA, exist_ok=True)
 
 
 def load_config():
@@ -50,18 +59,30 @@ def load_config():
 
 
 CONFIG = load_config()
-PORT = int(CONFIG.get("port") or 8900)
-BIND = CONFIG.get("bind") or "0.0.0.0"
+# The environment wins over config.json (Docker: MSD_PORT, MSD_BIND, MSD_TRUSTED_PROXIES).
+PORT = int(os.environ.get("MSD_PORT") or CONFIG.get("port") or 8900)
+BIND = os.environ.get("MSD_BIND") or CONFIG.get("bind") or "0.0.0.0"
 TITLE = CONFIG.get("title") or "Media Server Dashboard"
 AUTH = CONFIG.get("auth") or {}
 SETUP_DONE = bool(AUTH.get("user") and AUTH.get("hash"))
 # Requests from these addresses are a reverse proxy (Caddy in the LXC): the real client is in X-Forwarded-For.
-TRUSTED_PROXIES = set(CONFIG.get("trusted_proxies") or [])
+TRUSTED_PROXIES = set(CONFIG.get("trusted_proxies") or []) | {p.strip() for p in os.environ.get("MSD_TRUSTED_PROXIES", "").split(",") if p.strip()}
 INTERNET_CHECK = CONFIG.get("internet_check") or "1.1.1.1:443"
 WATCH_GUESTS = [str(g) for g in CONFIG.get("watch_guests") or []]
 STORAGES = CONFIG.get("storages") or []  # empty: every active storage on the node
 PVE = CONFIG.get("proxmox") or {}
 HOME = CONFIG.get("home") or {}
+GAME = CONFIG.get("game") or {}
+WEBHOOK_TOKEN = CONFIG.get("webhook_token") or ""
+settings_updates = lambda: CONFIG.get("updates") or {}
+LIVE = livemod.Live(DATA, enabled=GAME.get("enabled", True))
+# The root-owned update service (scripts/install-in-container.sh): its settings, and where it takes requests.
+UPDATER_CONF = os.environ.get("MSD_UPDATER_CONF") or "/etc/media-server-dashboard/updater.json"
+UPDATE_DIR = os.path.join(DATA, "updater")
+MODE = os.environ.get("MSD_MODE") or ""  # "docker" in the container image
+# Where releases come from. Without the update service (Docker, by hand) the app only says that one is out.
+RELEASE_REPO = os.environ.get("MSD_UPDATE_REPO", "lcsfls/media-server-dashboard-extended")
+notice = {}
 
 # The apps the dashboard knows by heart. Anything else is a custom app: "arr" (Lidarr, Readarr, Whisparr...)
 # or "generic" (any HTTP API with a status URL).
@@ -243,6 +264,14 @@ def read_host():
         if g.get("status") != "running":
             return 0, 0
         return round(c["rx"].update(g.get("netin", 0), now)), round(c["tx"].update(g.get("netout", 0), now))
+    seen = state["proxmox"].get("guests") or []
+    before = {g["id"]: g["status"] for g in seen}
+    for g in mine:
+        old = before.get(g.get("vmid"))
+        if seen and old and old != g.get("status"):
+            kind = "health" if g.get("status") != "running" else "recover"
+            LIVE.emit("Proxmox", kind, f"{'LXC' if g.get('type') == 'lxc' else 'VM'} {g.get('vmid')} ({g.get('name') or '?'}) ist jetzt {g.get('status')}",
+                      "warning" if kind == "health" else "success")
     state["proxmox"] = {"ok": True, "guests": sorted(({
         "id": g.get("vmid"), "name": g.get("name"), "type": g.get("type"), "status": g.get("status"),
         "cpu": round(float(g.get("cpu") or 0) * 100, 1), "mem": g.get("mem", 0), "maxmem": g.get("maxmem", 0),
@@ -356,6 +385,7 @@ def poster(item):
 
 
 arr_slow = {}
+arr_seen = {}  # what was already in each app's "recently added", so only new arrivals become events
 
 
 def read_arr(kind):
@@ -418,6 +448,14 @@ def read_arr(kind):
         elif c2.get("airDateUtc"):
             upcoming.append({"kind": "Episode", "title": f"{(c2.get('series') or {}).get('title', '')} {ep(c2)}".strip(), "when": c2["airDateUtc"]})
 
+    keys = {(r.get("title"), r.get("sub"), r.get("when")) for r in recent}
+    old = arr_seen.get(kind)
+    if old is not None and not LIVE.hooked(a["name"]):
+        for r in recent:
+            if (r.get("title"), r.get("sub"), r.get("when")) not in old:
+                what = f"{r['title']}" + (f" ({r['year']})" if r.get("year") else "") + (f" {r['sub'].split(' ')[0]}" if r.get("sub") else "")
+                LIVE.emit(a["name"], "import", f"hat {what}" + (f" in {r['quality']}" if r.get("quality") else "") + " importiert", "success")
+    arr_seen[kind] = keys | (old or set())
     state[kind] = {
         "ok": True, "version": slow["status"].get("version"), "library": library, "missing": slow["missing"].get("totalRecords", 0),
         "recent": recent, "upcoming": upcoming,
@@ -517,6 +555,9 @@ def read_activity():
         except FAIL:
             continue
         act[a["name"]] = jobs[0] if jobs else None
+        job = act[a["name"]] or ""
+        if "Search" in job and job != state["activity"].get(a["name"]) and not LIVE.hooked(a["name"]):
+            LIVE.emit(a["name"], "search", "sucht: " + re.sub(r"(?<=[a-z])(?=[A-Z])", " ", job), "info")
     b = BY_KIND.get("bazarr")
     if b:
         try:
@@ -581,6 +622,14 @@ def activity(name):
     return state["activity"].get(name)
 
 
+sab_seen = None  # the queue at the last look: id -> name
+
+
+def sab_seen_set(ids):
+    global sab_seen
+    sab_seen = ids
+
+
 def read_sab():
     a = BY_KIND.get("sabnzbd")
     if not a:
@@ -593,6 +642,24 @@ def read_sab():
         state["sab"] = {"ok": False}
         return
     num = lambda v: float(v or 0)
+    ids = {s.get("nzo_id"): html.unescape(s.get("filename") or "") for s in q.get("slots", []) if s.get("nzo_id")}
+    gone = [i for i in sab_seen if i not in ids] if sab_seen is not None else []
+    if gone and not LIVE.hooked(a["name"]):
+        try:
+            slots = app_get(a, "history&limit=30")["history"].get("slots", [])
+        except FAIL:
+            slots = []
+        done = {h.get("nzo_id"): h for h in slots}
+        for i in gone:
+            h = done.get(i)
+            if not h:
+                continue
+            name = download_titles.get(i.lower()) or tidy(h.get("name") or sab_seen[i])
+            if h.get("status") == "Completed":
+                LIVE.emit(a["name"], "download", f"hat {name} fertig geladen", "success")
+            elif h.get("status") == "Failed":
+                LIVE.emit(a["name"], "error", f"Download fehlgeschlagen: {name} ({livemod.clean(h.get('fail_message'), 120)})", "error")
+    sab_seen_set(ids)
     state["sab"] = {
         "ok": True, "version": q.get("version"), "paused": bool(q.get("paused")),
         "speed": num(q.get("kbpersec")) * 1024, "left": num(q.get("mbleft")) * 1048576, "eta": q.get("timeleft"),
@@ -664,6 +731,45 @@ def alerts():
     return out
 
 
+alert_seen = None
+payload_cache = {"at": 0.0, "body": ""}
+payload_lock = threading.Lock()
+
+
+def current_payload():
+    """The page data, worked out at most once a second however many pages are open."""
+    with payload_lock:
+        if time.time() - payload_cache["at"] > 1:
+            payload_cache["body"] = demo.payload(TITLE) if DEMO else payload()
+            payload_cache["at"] = time.time()
+        return payload_cache["body"]
+
+
+def push_loop():
+    """Live data for every open page over SSE, every two seconds while someone is watching."""
+    while True:
+        time.sleep(2)
+        if LIVE.subscribers:
+            try:
+                LIVE.broadcast_raw("data", current_payload())
+            except Exception as e:
+                print(f"push_loop: {type(e).__name__}: {e}", flush=True)
+
+
+def watch_alerts():
+    """New problems and solved problems, as chat lines from whoever has them."""
+    global alert_seen
+    now = {(a["source"], a["message"]): a for a in alerts() if not (a["source"] == "Proxmox" and " is " in a["message"])}
+    if alert_seen is not None:
+        for key, a in now.items():
+            if key not in alert_seen:
+                LIVE.emit(a["source"], "error" if a["level"] == "error" else "health", a["message"], a["level"])
+        for key, a in alert_seen.items():
+            if key not in now:
+                LIVE.emit(a["source"], "recover", "wieder da" if a["message"] in ("Not reachable",) else f"erledigt: {a['message']}", "success")
+    alert_seen = now
+
+
 def payload():
     upcoming = sorted(state["radarr"].get("upcoming", []) + state["sonarr"].get("upcoming", []), key=lambda u: u["when"])[:8]
     issues = alerts()
@@ -675,11 +781,128 @@ def payload():
     return json.dumps({
         "title": TITLE, "now": int(time.time() * 1000), "alerts": issues, "history": {k: list(v) for k, v in history.items()},
         "upcoming": upcoming, **body, "services": services, "sab": sab, "home": home_payload(),
+        "version": VERSION, "update": update_brief(),
     })
+
+
+# ---------- updates: the app asks, the root-owned update service does the work ----------
+def updater_conf():
+    try:
+        with open(UPDATER_CONF, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def status_file():
+    conf = updater_conf() or {}
+    return conf.get("status_file") or os.path.join(conf.get("work_dir") or "/var/lib/media-server-dashboard-updater", "public", "status.json")
+
+
+def update_status():
+    try:
+        with open(status_file(), encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def update_request(action, **extra):
+    """Hand a job to the update service: it watches this file (systemd path unit) and removes it when it starts."""
+    req = {"action": action, "at": int(time.time()), "nonce": secrets.token_hex(8), **extra}
+    os.makedirs(UPDATE_DIR, exist_ok=True)
+    tmp = os.path.join(UPDATE_DIR, ".request.tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(req, f)
+    os.replace(tmp, os.path.join(UPDATE_DIR, "request.json"))
+    return req
+
+
+def vkey(v):
+    m = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", v or "")
+    return tuple(int(x) for x in m.groups()) if m else (-1,)
+
+
+def check_notice():
+    """Docker and hand installs: is there a newer release? Only a notice; nothing is installed from here."""
+    if not RELEASE_REPO or not re.fullmatch(r"[\w.-]+/[\w.-]+", RELEASE_REPO):
+        return
+    rel = http_get(f"https://api.github.com/repos/{RELEASE_REPO}/releases/latest", {"Accept": "application/vnd.github+json", "User-Agent": "media-server-dashboard"}, timeout=10)
+    v = (rel.get("tag_name") or "").lstrip("v")
+    notice.clear()
+    if vkey(v) > vkey(VERSION):
+        notice.update(version=v, url=rel.get("html_url") or "", name=rel.get("name") or v)
+
+
+def update_info():
+    conf = updater_conf()
+    st = update_status()
+    return {
+        "managed": bool(conf), "mode": MODE or ("lxc" if conf else "manual"), "notice": dict(notice) or None, "version": VERSION, "repo": (conf or {}).get("repo"), "channel": (conf or {}).get("channel", "stable"),
+        "auto": bool(settings_updates().get("auto")), "hour": int(settings_updates().get("hour", 4)), "status": st,
+        "pending": os.path.exists(os.path.join(UPDATE_DIR, "request.json")), "acked": settings_updates().get("acked") or "",
+    }
+
+
+def update_brief():
+    """What the dashboard header needs: a newer release, or an update running or needing attention."""
+    st = update_status()
+    avail = st.get("available") or {}
+    last = st.get("last") or {}
+    if not updater_conf():
+        return {"available": notice.get("version"), "state": "idle", "last": {}, "acked": True}
+    return {"available": avail.get("version") if avail.get("installable") else None, "state": st.get("state") or "idle",
+            "last": last, "acked": not last.get("id") or (settings_updates().get("acked") or "") == last.get("id")}
+
+
+def update_loop():
+    """Asks the update service to look for releases every 6 hours, installs at the chosen hour if wanted,
+    and tells open pages when the service writes something new."""
+    last_check, last_auto, mtime = 0.0, "", 0.0
+    while True:
+        try:
+            if not updater_conf() and time.time() - last_check > 6 * 3600:
+                last_check = time.time()
+                try:
+                    check_notice()
+                except FAIL:
+                    pass
+            if updater_conf():
+                now = time.time()
+                if now - last_check > 6 * 3600:
+                    update_request("check", requested_by="schedule")
+                    last_check = now
+                st = update_status()
+                avail = st.get("available") or {}
+                day = time.strftime("%Y-%m-%d")
+                if (settings_updates().get("auto") and avail.get("installable") and time.localtime().tm_hour == int(settings_updates().get("hour", 4))
+                        and last_auto != day and st.get("state") not in ("running",)):
+                    update_request("install", version=avail["version"], requested_by="auto")
+                    last_auto = day
+                    LIVE.emit("Dashboard", "info", f"installiert automatisch Version {avail['version']}", "info")
+                try:
+                    m = os.path.getmtime(status_file())
+                except OSError:
+                    m = 0
+                if m != mtime:
+                    mtime = m
+                    LIVE.broadcast("update", update_info())
+        except Exception as e:  # never let this stop the dashboard
+            print(f"update_loop: {type(e).__name__}: {e}", flush=True)
+        time.sleep(2 if update_status().get("state") == "running" else 10)
+
+
+def save_settings(**changes):
+    """Change a few top-level settings without the wizard (and without a restart)."""
+    c = load_config()
+    c.update(changes)
+    write_private(CONFIG_FILE, json.dumps(c, indent=2) + "\n")
+    CONFIG.update(changes)
 
 
 # ---------- accounts ----------
 failures = {}  # ip -> [attempts, locked until]
+hook_times = deque()  # when the last webhooks came in, for a simple limit per minute
 ITERATIONS = 300_000
 
 
@@ -742,6 +965,10 @@ def public_config():
         "custom_apps": [{**{k: v for k, v in a.items() if k != "api_key"}, "has_key": bool(a.get("api_key"))} for a in c.get("custom_apps") or []],
         "home": {"enabled": bool(HOME.get("enabled")), "side": HOME.get("side", "right"), "layout": HOME.get("layout", "grid"),
                  "start": bool(HOME.get("start")), "tiles": HOME.get("tiles") or []},
+        # The webhook address is a secret too, but whoever may open the settings needs it to set up the apps.
+        "webhook": {"token": WEBHOOK_TOKEN if SETUP_DONE else "", "set": bool(WEBHOOK_TOKEN)},
+        "game": {"enabled": GAME.get("enabled", True)},
+        "updates": update_info() if SETUP_DONE else {"managed": bool(updater_conf()), "version": VERSION},
     }
 
 
@@ -785,6 +1012,9 @@ def wizard_test(req):
                 return {"ok": True, "version": st.get("version"), "app": st.get("appName")}
             app_get(app, app["health_path"], raw=True)
             return {"ok": True}
+        if what == "hook":
+            LIVE.emit(req.get("source") or "Dashboard", "test", "Test aus den Einstellungen: der Live-Feed funktioniert 👋", "info")
+            return {"ok": True}
         return {"ok": False, "error": "unbekannter Test"}
     except urllib.error.HTTPError as e:
         hint = {401: "API-Key/Token falsch", 403: "keine Berechtigung", 404: "Pfad nicht gefunden (URL-Basis prüfen)"}.get(e.code, "")
@@ -809,7 +1039,9 @@ def clean_url(u):
 def build_config(req):
     """The new config.json from the wizard's answers, keeping saved secrets that weren't re-entered."""
     old = CONFIG
-    c = {k: v for k, v in old.items() if k in ("port", "bind", "trusted_proxies", "caddy_site_file", "internet_check")}
+    c = {k: v for k, v in old.items() if k in ("port", "bind", "trusted_proxies", "caddy_site_file", "internet_check", "updates")}
+    c["webhook_token"] = secrets.token_urlsafe(24) if req.get("new_webhook_token") or not old.get("webhook_token") else old["webhook_token"]
+    c["game"] = {"enabled": bool((req.get("game") or {}).get("enabled", True))}
     c["title"] = (req.get("title") or "").strip()[:80] or "Media Server Dashboard"
 
     user = (req.get("user") or "").strip()
@@ -945,11 +1177,11 @@ def save_and_restart(c):
 
 
 def dashboard_url(c, lan):
+    """Where to go after saving: the new domain if Caddy serves it; otherwise stay on the address in use
+    (in Docker or behind your own proxy, only the browser knows the right one)."""
     if c.get("domain") and c.get("caddy_site_file"):
         return f"https://{c['domain']}/"
-    if c.get("caddy_site_file"):
-        return f"http://{lan}/" if lan else "/"
-    return f"http://{c['domain'] or lan or 'localhost'}:{c.get('port') or 8900}/"
+    return "/"
 
 
 # ---------- web server ----------
@@ -997,7 +1229,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split("?")[0]
         if path == "/healthz":
-            return self.reply(200, b"ok", "text/plain")
+            return self.json(200, {"ok": True, "version": VERSION})
         if path == "/setup":
             return self.page("setup.html") if self.authed() or not SETUP_DONE else self.redirect("/login")
         if path == "/setup/config":
@@ -1011,7 +1243,11 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/data":
             if not self.authed():
                 return self.reply(401, b"Login needed", "text/plain")
-            return self.reply(200, (demo.payload(TITLE) if DEMO else payload()).encode(), "application/json")
+            return self.reply(200, current_payload().encode(), "application/json")
+        if path == "/api/stream":
+            return self.stream() if self.authed() else self.reply(401, b"Login needed", "text/plain")
+        if path == "/api/update":
+            return self.json(200, update_info()) if self.authed() else self.json(401, {"error": "Login nötig"})
         if DEMO and path.startswith("/demo-poster/"):
             return self.reply(200, demo.poster(path), "image/svg+xml")
         if path in ("/", "/office"):
@@ -1047,6 +1283,56 @@ class Handler(BaseHTTPRequestHandler):
                     poster_cache.pop(next(iter(poster_cache)))
         self.reply(200, *cached)
 
+    def stream(self):
+        """Server-Sent Events: the history once, then live data, chat lines, game and update news as they happen."""
+        q = LIVE.subscribe()
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Accel-Buffering", "no")
+            self.end_headers()
+            send = lambda name, data: self.wfile.write(f"event: {name}\ndata: {data}\n\n".encode()) or self.wfile.flush()
+            send("hello", json.dumps({"events": LIVE.recent(), "game": LIVE.summary(), "version": VERSION}, ensure_ascii=False))
+            send("data", current_payload())
+            while True:
+                try:
+                    name, data = q.get(timeout=15)
+                    send(name, data)
+                except queue.Empty:
+                    self.wfile.write(b": ping\n\n")
+                    self.wfile.flush()
+        except (OSError, ValueError):
+            pass  # the page went away
+        finally:
+            LIVE.unsubscribe(q)
+
+    def hook(self, rest):
+        token, _, path_source = rest.partition("/")  # /hook/<token> or /hook/<token>/<source>
+        path_source = urllib.parse.unquote(path_source)
+        if not WEBHOOK_TOKEN or not hmac.compare_digest(token.encode(), WEBHOOK_TOKEN.encode()):
+            time.sleep(0.5)
+            return self.json(404, {"ok": False})
+        now = time.time()
+        hook_times.append(now)
+        while hook_times and now - hook_times[0] > 60:
+            hook_times.popleft()
+        if len(hook_times) > 120:
+            return self.json(429, {"ok": False, "error": "zu viele Webhooks pro Minute"})
+        raw = self.body(262144)
+        try:
+            body = json.loads(raw or b"{}")
+            source_hint = path_source or urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("source", [""])[0]
+            source, kind, text, level = livemod.parse_hook(body, source_hint)
+        except ValueError as e:
+            return self.json(400, {"ok": False, "error": str(e)})
+        ev = LIVE.emit(source, kind, text, level, via="hook")
+        self.json(200, {"ok": True, "id": ev["id"]})
+
+    def same_origin_json(self):
+        """POSTs that change something: JSON only, so a form on another site can't send them."""
+        return self.headers.get("Content-Type", "").startswith("application/json")
+
     def body(self, limit=65536):
         size = min(int(self.headers.get("Content-Length") or 0), limit)
         return self.rfile.read(size)
@@ -1055,6 +1341,18 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path == "/login":
             return self.login()
+        if path.startswith("/hook/"):
+            return self.hook(path[len("/hook/"):])
+        if path.startswith("/api/update/") or path == "/api/game/reset":
+            if not self.authed():
+                return self.json(401, {"ok": False, "error": "Login nötig"})
+            if not self.same_origin_json():
+                return self.json(415, {"ok": False, "error": "JSON erwartet"})
+            try:
+                req = json.loads(self.body() or b"{}")
+            except ValueError:
+                return self.json(400, {"ok": False, "error": "Ungültiges JSON"})
+            return self.json(*self.update_action(path, req))
         if path in ("/setup/test", "/setup/save"):
             # JSON only, and from this page: a form on another site can't send either.
             if not self.headers.get("Content-Type", "").startswith("application/json"):
@@ -1076,6 +1374,38 @@ class Handler(BaseHTTPRequestHandler):
             self.json(200, {"ok": True, "url": dashboard_url(c, state["network"].get("lan", ""))})
             return save_and_restart(c)
         self.reply(404, b"Not found", "text/plain")
+
+    def update_action(self, path, req):
+        if path == "/api/game/reset":
+            LIVE.reset()
+            return 200, {"ok": True}
+        if path == "/api/update/settings":
+            hour = int(req.get("hour", 4)) % 24
+            save_settings(updates={**settings_updates(), "auto": bool(req.get("auto")), "hour": hour})
+            return 200, {"ok": True, **update_info()}
+        if path == "/api/update/ack":
+            save_settings(updates={**settings_updates(), "acked": str(req.get("id") or "")})
+            return 200, {"ok": True}
+        if not updater_conf():
+            return 400, {"ok": False, "error": "Updates gibt es nur bei der Installation mit install-in-container.sh (LXC)."}
+        if update_status().get("state") == "running":
+            return 409, {"ok": False, "error": "Es läuft schon ein Update."}
+        if path == "/api/update/check":
+            update_request("check", requested_by=AUTH.get("user"))
+            return 200, {"ok": True}
+        if path == "/api/update/install":
+            # Like signing a change: the password again, so an open session alone can't install.
+            if not check_login(AUTH.get("user", ""), req.get("password") or ""):
+                time.sleep(0.8)
+                return 403, {"ok": False, "error": "Passwort falsch"}
+            avail = update_status().get("available") or {}
+            version = str(req.get("version") or "")
+            if not re.fullmatch(r"\d+\.\d+\.\d+", version) or version != avail.get("version") or not avail.get("installable"):
+                return 400, {"ok": False, "error": "Diese Version kann gerade nicht installiert werden. Erst nach Updates suchen."}
+            update_request("install", version=version, requested_by=AUTH.get("user"))
+            LIVE.emit("Dashboard", "info", f"Update auf {version} angestoßen von {AUTH.get('user')}", "info")
+            return 200, {"ok": True}
+        return 404, {"ok": False, "error": "unbekannt"}
 
     def login(self):
         ip = self.client_ip()
@@ -1113,9 +1443,13 @@ if __name__ == "__main__":
     print(f"{TITLE}{' (demo)' if DEMO else ''}: listening on {BIND}:{PORT}", flush=True)
     if not SETUP_DONE:
         print(f"Setup not finished: open /setup and enter the setup token: {setup_token()}  (also in {SETUP_TOKEN_FILE})", flush=True)
+    threading.Thread(target=push_loop, daemon=True).start()
     if DEMO:
         import demo
+        threading.Thread(target=demo.events, args=(LIVE,), daemon=True).start()
     else:
+        threading.Thread(target=update_loop, daemon=True).start()
+        looped(10, watch_alerts)
         looped(30, read_network)
         if HOME.get("enabled") and HOME.get("tiles"):
             looped(10, read_home)

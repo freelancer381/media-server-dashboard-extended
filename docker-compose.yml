@@ -1,0 +1,24 @@
+# Media Server Dashboard with Docker Compose (also: Synology Container Manager → Project).
+#
+#   docker compose up -d
+#   docker compose logs dashboard     # the setup token for the first visit to /setup
+#
+# Updates: docker compose pull && docker compose up -d
+services:
+  dashboard:
+    image: ghcr.io/lcsfls/media-server-dashboard-extended:latest
+    # Or build it from this folder instead: comment out "image" and use "build: ."
+    container_name: media-server-dashboard
+    restart: unless-stopped
+    ports:
+      - "8900:8900"
+    volumes:
+      # Settings, password hash, API keys, feed and game. On a Synology e.g. /volume1/docker/media-dashboard:/data
+      - ./data:/data
+    environment:
+      TZ: Europe/Berlin
+      # Behind a reverse proxy (Synology, Nginx Proxy Manager, Traefik, Caddy): the proxy's address as the
+      # container sees it, so logins are locked per real visitor and cookies are marked secure.
+      # MSD_TRUSTED_PROXIES: "172.17.0.1"
+    # The folder above must be writable for uid 1000 (Synology: see docs/synology.md), or set your own:
+    # user: "1026:100"

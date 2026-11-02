@@ -1,0 +1,18 @@
+# Changelog
+
+All notable changes. Versions follow [Semantic Versioning](https://semver.org). The section of a release
+becomes its GitHub release text, so write it for the people who run the dashboard.
+
+## Unreleased
+
+## 0.2.0 - 2026-11-02
+
+First release of the extended edition.
+
+- **Proxmox:** host stats, storages and guests through the Proxmox API (read-only `PVEAuditor` token); the apps are reached over the network by URL and API key.
+- **Setup wizard** at `/setup`, later the settings: user, address (IP or domain with HTTPS through Caddy), Proxmox, apps with connection tests, custom apps with presets, start page, live feed, updates.
+- **Start page** beside the office: tiles or a table with your own icons and links, online checks and per-guest CPU, RAM and traffic.
+- **Live feed:** webhooks from Radarr, Sonarr, Lidarr, Readarr, Prowlarr, Bazarr and SABnzbd (Apprise), Jellyfin and your own tools, plus what the dashboard notices itself, as a chat in the office. Pages update live over Server-Sent Events.
+- **Office game:** XP, levels, badges, today's numbers and a streak of days without errors for every worker.
+- **One-click updates** from Settings → Updates: only releases signed by this repository's release workflow are installed, with a backup, a health check and an automatic rollback.
+- **Installer** for Proxmox (`proxmox/install-lxc.sh`): creates the LXC with your choice of storage, CPU, RAM and network and installs everything.

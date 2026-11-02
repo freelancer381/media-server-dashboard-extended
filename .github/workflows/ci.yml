@@ -1,0 +1,68 @@
+# Tests on every push and pull request, and before every release (release.yml calls this file).
+# Runs on the systems the dashboard is installed on: Debian 12 and 13, their own Python, no extra packages.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test on ${{ matrix.image }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    container: ${{ matrix.image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["debian:12", "debian:13"]
+    steps:
+      - name: Tools
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends python3 git ca-certificates shellcheck >/dev/null
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Compile
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          python3 -m py_compile *.py updater/*.py scripts/*.py tests/*.py
+
+      - name: Unit tests
+        run: python3 -m unittest discover -s tests -v
+
+      - name: Smoke test (setup, login, webhook, live stream)
+        run: python3 tests/smoke.py
+
+      - name: Shell scripts
+        run: shellcheck -S warning proxmox/*.sh scripts/*.sh
+
+      - name: Release build works
+        run: python3 scripts/build-release.py --version "$(cat VERSION)" --out "$RUNNER_TEMP/dist"
+
+  docker:
+    name: Container image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build and start
+        run: |
+          set -euo pipefail
+          docker build --build-arg VERSION="$(cat VERSION)" -t msd:ci .
+          mkdir -p data && sudo chown 1000:1000 data
+          docker run -d --name msd -p 8900:8900 -v "$PWD/data:/data" msd:ci
+          for _ in $(seq 1 30); do curl -fsS http://127.0.0.1:8900/healthz && ok=1 && break; sleep 1; done
+          docker logs msd
+          [ "${ok:-}" = 1 ]
+          test "$(curl -s -o /dev/null -w '%{redirect_url}' http://127.0.0.1:8900/)" = "http://127.0.0.1:8900/setup"
+          sudo test -f data/setup-token.txt

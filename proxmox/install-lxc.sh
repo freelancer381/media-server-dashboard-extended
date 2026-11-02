@@ -9,9 +9,9 @@
 # from $REPO (branch $BRANCH) inside the container.
 set -euo pipefail
 
-REPO="${REPO:-}"  # e.g. REPO=https://github.com/<you>/media-server-dashboard.git
+REPO="${REPO:-https://github.com/lcsfls/media-server-dashboard-extended.git}"
 BRANCH="${BRANCH:-main}"
-APP=/opt/media-server-dashboard
+STAGE=/root/msd-src
 DATA=/var/lib/media-server-dashboard
 PVE_USER="dashboard@pve"
 TOKEN_NAME="msd"
@@ -23,28 +23,33 @@ die() { echo "Error: $*" >&2; exit 1; }
 [ "$(id -u)" -eq 0 ] || die "please run as root on the Proxmox host"
 command -v pct >/dev/null && command -v pvesm >/dev/null || die "this is not a Proxmox VE host (pct/pvesm missing)"
 command -v whiptail >/dev/null || die "whiptail is missing (apt install whiptail)"
-[ -n "$SRC" ] || [ -n "$REPO" ] || die "run this from a checkout of the repository, or set REPO=<git url>"
 
 ask()   { whiptail --backtitle "$TITLE" --title "$1" --inputbox "$2" 10 70 "$3" 3>&1 1>&2 2>&3; }
 yesno() { whiptail --backtitle "$TITLE" --title "$1" --yesno "$2" 12 70; }
 menu()  { local t="$1" q="$2"; shift 2; whiptail --backtitle "$TITLE" --title "$t" --menu "$q" 20 76 10 "$@" 3>&1 1>&2 2>&3; }
 gb()    { awk -v k="$1" 'BEGIN { printf "%.0f GB", k / 1048576 }'; }
 
-# Copies the code into the container: from this checkout if there is one, otherwise with git.
+# Puts the code into a staging folder in the container (from this checkout if there is one, otherwise
+# with git); install-in-container.sh then installs it as the current release.
 push_code() {
   local id="$1"
+  pct exec "$id" -- rm -rf "$STAGE"
   if [ -n "$SRC" ]; then
     echo "==> Copying code from $SRC"
     local tgz; tgz=$(mktemp --suffix=.tgz)
     tar -C "$SRC" --exclude=.git --exclude=__pycache__ --exclude=config.json --exclude=.secret --exclude=setup-token.txt -czf "$tgz" .
     pct push "$id" "$tgz" /root/msd.tgz
     rm -f "$tgz"
-    pct exec "$id" -- bash -c "mkdir -p $APP && tar -xzf /root/msd.tgz -C $APP && rm /root/msd.tgz"
+    pct exec "$id" -- bash -c "mkdir -p $STAGE && tar -xzf /root/msd.tgz -C $STAGE && rm /root/msd.tgz"
   else
     echo "==> Cloning $REPO ($BRANCH)"
-    pct exec "$id" -- bash -c "export DEBIAN_FRONTEND=noninteractive; apt-get update -qq && apt-get install -y -qq git >/dev/null
-      if [ -d $APP/.git ]; then git -C $APP fetch -q origin $BRANCH && git -C $APP reset -q --hard origin/$BRANCH; else git clone -q -b $BRANCH $REPO $APP; fi"
+    pct exec "$id" -- bash -c "export DEBIAN_FRONTEND=noninteractive; apt-get update -qq && apt-get install -y -qq git >/dev/null && git clone -q --depth 1 -b $BRANCH $REPO $STAGE"
   fi
+}
+
+install_staged() {
+  pct exec "$1" -- bash "$STAGE/scripts/install-in-container.sh"
+  pct exec "$1" -- rm -rf "$STAGE"
 }
 
 # ---------- update an existing container ----------
@@ -52,7 +57,7 @@ if [ "${1:-}" = "--update" ]; then
   CTID="${2:-}"
   [ -n "$CTID" ] && pct status "$CTID" >/dev/null 2>&1 || die "usage: $0 --update <CTID>"
   push_code "$CTID"
-  pct exec "$CTID" -- bash "$APP/scripts/install-in-container.sh"
+  install_staged "$CTID"
   exit 0
 fi
 
@@ -65,14 +70,14 @@ HOSTNAME=$(ask "Hostname" "Hostname of the container:" "media-dashboard") || exi
 
 # Where the container's disk goes: every active storage that can hold container volumes.
 STORE_MENU=()
-while read -r name type _ total used avail _; do
+while read -r name type _ total _ avail _; do
   STORE_MENU+=("$name" "$(printf '%-10s %s free of %s' "$type" "$(gb "$avail")" "$(gb "$total")")")
 done < <(pvesm status -content rootdir 2>/dev/null | awk 'NR > 1 && $3 == "active"')
 [ ${#STORE_MENU[@]} -gt 0 ] || die "no active storage for containers (content type 'rootdir') found"
 STORAGE=$(menu "Disk" "Install the container on which storage?" "${STORE_MENU[@]}") || exit 1
 
 TMPL_MENU=()
-while read -r name type _ total used avail _; do
+while read -r name type _ _ _ avail _; do
   TMPL_MENU+=("$name" "$(printf '%-10s %s free' "$type" "$(gb "$avail")")")
 done < <(pvesm status -content vztmpl 2>/dev/null | awk 'NR > 1 && $3 == "active"')
 [ ${#TMPL_MENU[@]} -gt 0 ] || die "no active storage for templates (content type 'vztmpl') found"
@@ -155,7 +160,7 @@ PY
 fi
 
 echo "==> Installing inside the container"
-pct exec "$CTID" -- bash "$APP/scripts/install-in-container.sh"
+install_staged "$CTID"
 
 CT_IP=$(pct exec "$CTID" -- hostname -I | awk '{print $1}')
 TOKEN=$(pct exec "$CTID" -- cat "$DATA/setup-token.txt" 2>/dev/null || true)
@@ -167,7 +172,8 @@ cat <<EOF
  Open:         http://$CT_IP/setup
  Setup token:  ${TOKEN:-(see: pct exec $CTID -- cat $DATA/setup-token.txt)}
 
- Update later: bash $0 --update $CTID
+ Updates:      in the dashboard under Settings → Updates (signed releases),
+               or from this checkout: bash $0 --update $CTID
  Remove:       pct stop $CTID && pct destroy $CTID
                pveum user delete $PVE_USER   (removes the API token)
 ────────────────────────────────────────────────────────

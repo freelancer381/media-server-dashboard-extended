@@ -6,3 +6,5 @@ setup-token.txt
 *.log
 __pycache__/
 .DS_Store
+data/
+dist/
