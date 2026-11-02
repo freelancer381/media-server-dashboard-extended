@@ -42,6 +42,15 @@ header a { margin-left: auto; color: var(--text); text-decoration: none; font-si
 .bar { height: 4px; border-radius: 3px; background: rgba(255, 255, 255, .12); overflow: hidden; margin-top: 5px; }
 .bar i { display: block; height: 100%; background: #4ab0ff; border-radius: 3px; }
 .bar i.warning { background: var(--warning); } .bar i.error { background: var(--critical); }
+@keyframes tileIn { from { opacity: 0; transform: translateY(8px) scale(.98); } }
+.tile, tr.row-in { animation: tileIn .45s cubic-bezier(.2, .8, .2, 1) both; animation-delay: calc(var(--i, 0) * 45ms); }
+.bar i { transition: width .7s cubic-bezier(.2, .8, .2, 1), background-color .4s; }
+.dot { transition: background-color .4s, box-shadow .4s; }
+.tile.down { border-color: rgba(255, 95, 87, .35); }
+.tile .guest { display: grid; gap: 6px; transition: opacity .3s; }
+.tile .guest.off { display: none; }
+.tile .meta span, .stat b { font-variant-numeric: tabular-nums; }
+#home h2 small, #home h2 span { transition: color .3s; }
 .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
 .tile { display: grid; gap: 6px; padding: 10px; border-radius: 14px; background: rgba(255, 255, 255, .05); border: 1px solid var(--edge); color: var(--text); text-decoration: none; min-width: 0; transition: background .15s, transform .15s; }
 a.tile:hover, a.tile:focus-visible { background: rgba(255, 255, 255, .11); transform: translateY(-1px); }
@@ -64,7 +73,7 @@ table.home td.n a:hover { text-decoration: underline; }
 table.home .icon { width: 22px; height: 22px; font-size: 14px; border-radius: 6px; }
 .empty { color: var(--muted); font-size: 13px; }
 /* live feed: chat lines from the workers, and the team board */
-#feed { position: absolute; left: 12px; bottom: 34px; width: 350px; max-height: 46%; z-index: 3; border-radius: 18px; background: rgba(16, 20, 36, .84); display: flex; flex-direction: column; overflow: hidden; }
+#feed { position: absolute; left: 12px; top: 8px; width: 340px; max-height: 42%; z-index: 3; border-radius: 18px; background: rgba(16, 20, 36, .84); display: flex; flex-direction: column; overflow: hidden; }
 #feed header { display: flex; align-items: center; gap: 4px; padding: 8px 8px 6px 10px; margin: 0; border-bottom: 1px solid rgba(255, 255, 255, .08); }
 #feed header button { background: none; border: 0; color: var(--muted); font: inherit; font-size: 12.5px; font-weight: 600; padding: 4px 9px; border-radius: 9px; cursor: pointer; }
 #feed header button[aria-selected="true"] { background: rgba(255, 255, 255, .12); color: var(--text); }
@@ -73,7 +82,11 @@ table.home .icon { width: 22px; height: 22px; font-size: 14px; border-radius: 6p
 #feed header .live.on i { background: var(--good); box-shadow: 0 0 0 0 rgba(48, 209, 88, .6); animation: pulse 2s infinite; }
 @keyframes pulse { 70% { box-shadow: 0 0 0 7px rgba(48, 209, 88, 0); } 100% { box-shadow: 0 0 0 0 rgba(48, 209, 88, 0); } }
 #feed .fold { padding: 4px 7px; }
-#feed.closed .pane { display: none; }
+/* compact by default (the newest two lines fit the empty corner above the room); ▾ opens the whole list */
+#feed:not(.open) #chat .msg:nth-child(n+3) { display: none; }
+#feed:not(.open) #team { max-height: 180px; }
+#feed:not(.open):not(:hover):not(:focus-within) { opacity: .88; }
+#feed { transition: opacity .25s, max-height .3s; }
 #feed .pane { overflow-y: auto; padding: 6px 8px 8px; display: grid; gap: 4px; align-content: start; min-height: 0; }
 #feed .pane[hidden] { display: none; }
 .msg { display: grid; grid-template-columns: 28px 1fr auto; gap: 8px; align-items: start; padding: 6px 7px; border-radius: 12px; background: rgba(255, 255, 255, .04); border-left: 3px solid transparent; }
@@ -97,11 +110,14 @@ table.home .icon { width: 22px; height: 22px; font-size: 14px; border-radius: 6p
 .player .bd { font-size: 14px; letter-spacing: 1px; text-align: right; max-width: 92px; }
 .player .today { font-size: 10.5px; color: var(--muted); margin-top: 2px; }
 /* speech bubbles above the workers */
-.say { max-width: 220px; padding: 5px 10px; border-radius: 12px; background: #fff; color: #1b1f2e; font-size: 11.5px; font-weight: 500; line-height: 1.3; box-shadow: 0 6px 18px rgba(0, 0, 0, .25); position: relative; white-space: normal; text-align: center; animation: pop .25s ease-out; }
+.say { pointer-events: auto; cursor: pointer; max-width: 220px; padding: 5px 10px; border-radius: 12px; background: #fff; color: #1b1f2e; font-size: 11.5px; font-weight: 500; line-height: 1.3; box-shadow: 0 6px 18px rgba(0, 0, 0, .25); position: relative; white-space: normal; text-align: center; animation: pop .25s ease-out; }
 .say::after { content: ''; position: absolute; left: 50%; bottom: -5px; width: 10px; height: 10px; background: #fff; transform: translateX(-50%) rotate(45deg); }
 .say.warning { background: #fff4d6; } .say.warning::after { background: #fff4d6; }
 .say.error { background: #ffe1df; } .say.error::after { background: #ffe1df; }
 @keyframes pop { from { opacity: 0; transform: scale(.8) translateY(6px); } }
+.conn { font-size: 12px; padding: 4px 10px; border-radius: 10px; background: rgba(250, 178, 25, .18); color: #fcd27a; border: 1px solid rgba(250, 178, 25, .35); }
+.conn[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
 #toasts { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 50; display: grid; gap: 8px; pointer-events: none; }
 .toast { padding: 10px 16px; border-radius: 14px; background: linear-gradient(135deg, rgba(246, 197, 68, .95), rgba(255, 159, 67, .95)); color: #2a1a00; font-weight: 700; font-size: 14px; box-shadow: 0 10px 30px rgba(0, 0, 0, .35); animation: pop .3s ease-out; }
 #scene canvas { display: block; width: 100%; height: 100%; cursor: grab; }
@@ -110,6 +126,9 @@ table.home .icon { width: 22px; height: 22px; font-size: 14px; border-radius: 6p
 .label { position: absolute; left: 0; top: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; will-change: transform; }
 .tag { pointer-events: auto; cursor: default; display: flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 12px; background: rgba(255, 255, 255, .94); color: #1b1f2e; font-size: 12px; font-weight: 600; white-space: nowrap; box-shadow: 0 4px 12px rgba(0, 0, 0, .18); position: relative; }
 .tag span { font-weight: 500; color: #2e9d5b; }
+.tag.link { cursor: pointer; transition: transform .15s, box-shadow .15s; }
+.tag.link:hover, .tag.link:focus-visible { transform: translateY(-2px); box-shadow: 0 8px 18px rgba(0, 0, 0, .28); }
+.pile:empty { display: none; }
 .tag span:empty { display: none; }
 .tag span.busy { color: #2563c9; }
 .tag span.out { color: #d43b33; }
@@ -125,7 +144,7 @@ table.home .icon { width: 22px; height: 22px; font-size: 14px; border-radius: 6p
   #home { width: auto; height: auto; min-height: 0; overflow: visible; }
 }
 @media (max-width: 700px) {
-  #feed { left: 8px; right: 8px; width: auto; bottom: 8px; max-height: 60%; }
+  #feed { left: 8px; right: 8px; top: auto; width: auto; bottom: 8px; max-height: 60%; }
   #page { padding: 16px 16px 20px; }
   #scene { height: 115vw; min-height: 0; }
   .hint { position: static; margin-top: 4px; }
@@ -141,12 +160,12 @@ table.home .icon { width: 22px; height: 22px; font-size: 14px; border-radius: 6p
 </head>
 <body>
 <div id="page">
-  <header><h1>The Office</h1><span id="summary"></span><a class="glass" href="/">← Dashboard</a></header>
+  <header><h1>The Office</h1><span id="summary"></span><span class="conn" id="conn" role="status" hidden></span><a class="glass" href="/">← Dashboard</a></header>
   <div id="stage">
     <div id="scene"><div id="labels"></div><div class="hint">Drag to turn the room · scroll or pinch to zoom</div>
       <section id="feed" class="glass" aria-label="Live feed">
         <header role="tablist"><button role="tab" aria-selected="true" data-tab="chat">💬 Live</button><button role="tab" aria-selected="false" data-tab="team" id="teamTab">🏆 Team</button>
-          <span class="live" id="liveDot" title="Live connection"><i></i><span>live</span></span><button class="fold" id="feedFold" aria-label="Show or hide the feed">▾</button></header>
+          <span class="live" id="liveDot" title="Live connection"><i></i><span>live</span></span><button class="fold" id="feedFold" aria-label="Show the whole feed">▾</button></header>
         <div class="pane" id="chat" role="tabpanel" aria-live="polite"><div class="empty">Nothing has happened yet. As soon as your apps do something, it shows up here.</div></div>
         <div class="pane" id="team" role="tabpanel" hidden></div>
       </section>
@@ -961,6 +980,18 @@ const BREAKS = [
   { at: [9.75, 3.75], face: Math.PI / 4, pose: 'beanbag' },
 ];
 const CORRIDOR = 0.9, AISLES = [-2.3, 3.4];
+// The office has six desks. Further staff work standing at the whiteboard on the left wall and have break
+// spots of their own, so nobody shares a place (sharing made them stand inside each other).
+const BOARD_SPOTS = [-3.8, -3.0, -1.5, -0.7, 0.1].map((z) => ({ at: [-11.0, z], face: -Math.PI / 2, pose: 'stand' }));
+const faceTo = (x, z, tx, tz) => Math.atan2(tx - x, tz - z);
+const EXTRA_BREAKS = [
+  { at: [2.5, -7.55], face: Math.PI, pose: 'coffee' },
+  { at: [3.45, -7.5], face: Math.PI, pose: 'coffee' },
+  { at: [3.3, 2.6], face: faceTo(3.3, 2.6, 6.2, -1.2), pose: 'coffee' },
+  { at: [4.9, 3.5], face: faceTo(4.9, 3.5, 6.2, -1.2), pose: 'coffee' },
+  { at: [2.4, 5.4], face: faceTo(2.4, 5.4, 6.2, -1.2), pose: 'coffee' },
+];
+const breakOf = (p) => p.i < BREAKS.length ? BREAKS[p.i] : EXTRA_BREAKS[(p.i - BREAKS.length) % EXTRA_BREAKS.length];
 
 function hairdo(head, s) {
   const hair = s.hair, hat = s.extra === 'beanie' || s.extra === 'cap';
@@ -1137,6 +1168,7 @@ function makePerson(name, i) {
   label.className = 'label';
   label.innerHTML = `<div class="tag" tabindex="0"><i class="dot"></i><b></b><span></span><i class="badge">!</i></div>`;
   label.querySelector('.tag').dataset.person = name;
+  label.addEventListener('click', (e) => { if (e.target.closest('.tag, .say')) openApp(name); });
   label.querySelector('b').textContent = name;
   $('labels').append(label);
   p.label = label;
@@ -1144,19 +1176,33 @@ function makePerson(name, i) {
 }
 
 const people = {};
-function seatOf(p) { const d = DESKS[p.i]; return { at: [d[0], d[1] + 0.88], face: Math.PI, pose: 'type' }; }
+function seatOf(p) {
+  if (p.i >= DESKS.length) return BOARD_SPOTS[(p.i - DESKS.length) % BOARD_SPOTS.length];
+  const d = DESKS[p.i];
+  return { at: [d[0], d[1] + 0.88], face: Math.PI, pose: 'type' };
+}
 function place(p, spot) { p.root.position.set(spot.at[0], 0, spot.at[1]); p.root.rotation.y = spot.face; p.pose = spot; }
 
 function send(p, where, instant) {
   if (p.where === where) return;
   const from = p.where;
   p.where = where;
-  const spot = where === 'desk' ? seatOf(p) : BREAKS[p.i % BREAKS.length];
-  if (instant || !from) { p.path = []; return place(p, spot); }
-  const aisle = AISLES[DESKS[p.i][1] > 0 ? 1 : 0];
-  const brk = BREAKS[p.i % BREAKS.length];
-  const toBreak = [[DESKS[p.i][0], aisle], [CORRIDOR, aisle], ...(brk.via || []), brk.at];
+  const spot = where === 'desk' ? seatOf(p) : breakOf(p);
+  if (instant || !from) { p.path = []; p.done = []; return place(p, spot); }
+  if (p.path.length) {
+    // Called back halfway: retrace the way already walked instead of cutting straight through the furniture.
+    p.path = [...p.done].reverse().map((v) => v.clone()).concat([new THREE.Vector3(spot.at[0], 0, spot.at[1])]);
+    p.done = [];
+    p.pose = null;
+    p.arrive = spot;
+    return;
+  }
+  const seat = seatOf(p);
+  const aisle = p.i < DESKS.length ? AISLES[DESKS[p.i][1] > 0 ? 1 : 0] : AISLES[0];
+  const brk = breakOf(p);
+  const toBreak = [[seat.at[0], aisle], [CORRIDOR, aisle], ...(brk.via || []), brk.at];
   p.path = (where === 'desk' ? [...toBreak.slice(0, -1).reverse(), spot.at] : toBreak).map(([x, z]) => new THREE.Vector3(x, 0, z));
+  p.done = [];
   p.pose = null;
   p.arrive = spot;
 }
@@ -1179,7 +1225,7 @@ function animate(p, dt, t) {
     const next = p.path[0], pos = root.position;
     const dx = next.x - pos.x, dz = next.z - pos.z, dist = Math.hypot(dx, dz);
     const step = SPEED * dt;
-    if (dist <= step) { pos.copy(next); p.path.shift(); if (!p.path.length) place(p, p.arrive); }
+    if (dist <= step) { pos.copy(next); (p.done || (p.done = [])).push(p.path.shift()); if (!p.path.length) place(p, p.arrive); }
     else {
       pos.x += dx / dist * step; pos.z += dz / dist * step;
       let diff = Math.atan2(dx, dz) - root.rotation.y;
@@ -1206,6 +1252,14 @@ function animate(p, dt, t) {
     p.shoulderL.rotation.z = 0.12; p.shoulderR.rotation.z = -0.12;
     p.elbowL.rotation.x = p.elbowR.rotation.x = -1.0;
     head.rotation.set(-0.08 + Math.sin(t * 0.7 + p.phase) * 0.04, Math.sin(t * 0.5 + p.phase) * 0.12, 0);
+  } else if (pose === 'stand') {
+    // working at the whiteboard: writing with the right hand, the left one on the hip now and then
+    const write = Math.sin(t * 3.2 + p.phase);
+    p.shoulderR.rotation.x = -2.1 + write * 0.12;
+    p.shoulderR.rotation.z = -0.15 + Math.sin(t * 1.3 + p.phase) * 0.2;
+    p.elbowR.rotation.x = -0.5;
+    p.shoulderL.rotation.z = 0.35; p.elbowL.rotation.x = -0.9;
+    head.rotation.set(-0.1, Math.sin(t * 0.6 + p.phase) * 0.1, 0);
   } else if (pose === 'pingpong') {
     const hit = Math.sin(t * 5 + (p.pose.at[0] > 6 ? Math.PI : 0));
     p.shoulderL.rotation.x = -0.3;
@@ -1268,28 +1322,50 @@ function queueText(sab) {
 }
 $('labels').append(pileLabel);
 
+// Labels stay inside the room's frame and step aside instead of covering each other: the one nearer the
+// viewer keeps its place, the ones behind move up. Shifts ease in so nothing jumps.
+let labelFrame = 0;
 function placeLabels() {
+  const items = [];
   for (const p of Object.values(people)) {
-    const out = !p.root.visible;
-    const pos = p.root.position;
-    const [x, y] = out ? project(DESKS[p.i][0], 1.2, DESKS[p.i][1] + 1) : project(pos.x, pos.y + 2.05, pos.z);
-    p.label.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
-    p.label.style.zIndex = Math.round(y);
+    const pos = p.root.position, home = seatOf(p).at;
+    const [x, y] = p.root.visible ? project(pos.x, pos.y + 2.05, pos.z) : project(home[0], 1.2, home[1] + 0.1);
+    items.push({ el: p.label, x, y });
   }
-  const [mx, my] = project(-8.0, 1.75, 7.05);
-  dcTag.style.transform = `translate(${mx}px, ${my}px) translate(-50%, -100%)`;
-  const [x, y] = project(0.0, 1.1, 0.95);
-  pileLabel.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
+  items.push({ el: dcTag, ...xy(project(-8.0, 1.75, 7.05)) });
+  if (pileLabel.textContent) items.push({ el: pileLabel, ...xy(project(0.0, 1.1, 0.95)) });
+  const W = host.clientWidth, H = host.clientHeight, measure = labelFrame++ % 12 === 0;
+  for (const it of items) if (measure || !it.el._w) { it.el._w = it.el.offsetWidth; it.el._h = it.el.offsetHeight; }
+  items.sort((a, b) => b.y - a.y);
+  const placed = [];
+  for (const it of items) {
+    const w = it.el._w || 80, h = it.el._h || 22;
+    const x = Math.min(Math.max(it.x, w / 2 + 6), W - w / 2 - 6);
+    let y = Math.min(Math.max(it.y, h + 6), H - 4);
+    for (let k = 0; k < 8; k++) {
+      const hit = placed.find((q) => Math.abs(q.x - x) < (q.w + w) / 2 + 4 && y > q.y - q.h - 3 && y - h < q.y + 3);
+      if (!hit) break;
+      y = hit.y - hit.h - 4;
+    }
+    const target = Math.max(y, h + 6) - it.y;
+    it.el._shift = it.el._shift === undefined ? target : it.el._shift + (target - it.el._shift) * 0.25;
+    const fy = it.y + it.el._shift;
+    placed.push({ x, y: fy, w, h });
+    it.el.style.transform = `translate(${x.toFixed(1)}px, ${fy.toFixed(1)}px) translate(-50%, -100%)`;
+    it.el.style.zIndex = Math.round(it.y);
+  }
 }
+const xy = ([x, y]) => ({ x, y });
 
 // ---------- live data ----------
+const NO_DESK = { screenMat: new THREE.MeshStandardMaterial() };
 let first = true;
 function render(d) {
   d.services.forEach((svc, i) => {
-    const p = people[svc.name] || (people[svc.name] = makePerson(svc.name, i % DESKS.length));
+    const p = people[svc.name] || (people[svc.name] = makePerson(svc.name, Object.keys(people).length));
     const bad = svc.issues.some((a) => a.level === 'error');
     const issue = svc.issues.map((a) => a.message).join('\n');
-    const desk = desks[p.i];
+    const desk = desks[p.i] || NO_DESK;  // staff at the whiteboard have no screen to light up
     const on = svc.up && !!svc.task;
     desk.screenMat.emissive.set(on ? p.s.color : '#000000');
     desk.screenMat.emissiveIntensity = on ? 1.1 : 0;
@@ -1302,7 +1378,8 @@ function render(d) {
     const badge = p.label.querySelector('.badge');
     badge.classList.toggle('show', svc.issues.length > 0);
     badge.classList.toggle('error', bad || !svc.up);
-    Object.assign(p, { up: svc.up, task: svc.task, issue });
+    Object.assign(p, { up: svc.up, task: svc.task, issue, url: svc.url });
+    p.label.querySelector('.tag').classList.toggle('link', !!svc.url);
     if (!svc.up) { p.where = null; p.path = []; return; }
     send(p, svc.task ? 'desk' : 'break', first);
   });
@@ -1353,7 +1430,63 @@ function tileStatus(t) {
   if (t.up === null) return { cls: 'warning', text: '…' };
   return { cls: '', text: t.ms != null ? `${t.ms} ms` : 'online' };
 }
+// The panel is built once per layout and then only updated: numbers glide to their new value, bars and
+// colours ease, new tiles fade in. Rebuilding it every two seconds made it flicker and lose hover.
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+function glide(el, value, fmt) {
+  if (!el) return;
+  value = Number(value) || 0;
+  const from = el._v === undefined ? value : el._v;
+  el._to = value;
+  cancelAnimationFrame(el._raf);
+  if (REDUCED || from === value) { el._v = value; el.textContent = fmt(value); return; }
+  const t0 = performance.now();
+  const step = (now) => {
+    const k = Math.min(1, (now - t0) / 650), e = 1 - Math.pow(1 - k, 3);
+    el._v = from + (value - from) * e;
+    el.textContent = fmt(el._v);
+    if (k < 1) el._raf = requestAnimationFrame(step);
+  };
+  el._raf = requestAnimationFrame(step);
+}
+const setText = (el, text) => { if (el && el.textContent !== text) el.textContent = text; };
+const setBar = (el, pct) => { if (!el) return; el.style.width = Math.max(0, Math.min(100, pct)).toFixed(1) + '%'; el.className = pctCls(pct); };
+const pctFmt = (v) => Math.round(v) + '%';
+const guestLabel = (g) => `\n${g.type === 'lxc' ? 'LXC' : 'VM'} ${g.id} ${g.name || ''}`;
 let homeKey = '';
+function buildHome(h, s) {
+  const tiles = h.tiles;
+  const stats = s.host ? `<div class="stats">
+    <div class="stat"><span>CPU · <span data-f="cores"></span> cores</span><b data-f="cpu">0%</b><div class="bar"><i data-f="cpuBar"></i></div></div>
+    <div class="stat"><span>RAM</span><b><span data-f="memUsed"></span> <span>/ <span data-f="memTotal"></span></span></b><div class="bar"><i data-f="memBar"></i></div></div>
+    <div class="stat"><span>Load (1/5/15 min)</span><b data-f="load"></b></div>
+    <div class="stat"><span>Network</span><b>↓ <span data-f="rx"></span></b><span>↑ <span data-f="tx"></span></span></div>
+  </div>` : '';
+  let body;
+  if (!tiles.length) body = '<div class="empty">No tiles yet. Add them under ⚙ Settings → Start page.</div>';
+  else if (h.layout === 'table') {
+    body = `<div class="tableWrap"><table class="home"><thead><tr><th>Service</th><th>Status</th><th>CPU</th><th>RAM</th><th>Net</th></tr></thead><tbody>${tiles.map((t, i) => {
+      const name = linkOk(t.url) ? `<a href="${escH(t.url)}" target="_blank" rel="noopener noreferrer">${escH(t.name)}</a>` : `<span>${escH(t.name)}</span>`;
+      return `<tr class="row-in" style="--i:${i}" data-i="${i}" data-tip="${escH(t.check)}${t.guest ? escH(guestLabel(t.guest)) : ''}"><td class="n">${iconHtml(t)}${name}</td>
+        <td><i class="dot" data-f="dot" style="display:inline-block"></i> <span data-f="st"></span></td><td data-f="gcpu">–</td><td data-f="gram">–</td>
+        <td class="io"><span data-f="gio">–</span></td></tr>`;
+    }).join('')}</tbody></table></div>`;
+  } else {
+    body = `<div class="tiles">${tiles.map((t, i) => {
+      const tag = linkOk(t.url) ? 'a' : 'div';
+      const attrs = tag === 'a' ? ` href="${escH(t.url)}" target="_blank" rel="noopener noreferrer"` : '';
+      return `<${tag} class="tile" style="--i:${i}" data-i="${i}"${attrs} data-tip="${escH(t.check)}${t.guest ? escH(guestLabel(t.guest)) : ''}">
+        <div class="top">${iconHtml(t)}<span class="name">${escH(t.name)}</span><i class="dot" data-f="dot"></i></div>
+        <div class="meta" data-f="metaSt"><span data-f="st"></span><span data-f="upt"></span></div>
+        ${t.guest ? `<div class="guest" data-f="guest">
+          <div class="meta"><span>CPU <span data-f="gcpu"></span></span><span>RAM <span data-f="gram"></span></span></div>
+          <div class="bar"><i data-f="gbar"></i></div>
+          <div class="meta"><span>↓ <span data-f="grx"></span></span><span>↑ <span data-f="gtx"></span></span></div></div>` : ''}
+      </${tag}>`;
+    }).join('')}</div>`;
+  }
+  return `<h2><span data-f="host"></span><small><span data-f="online"></span></small></h2>${stats}${body}`;
+}
 function renderHome(d) {
   const h = d.home || {}, aside = $('home');
   const show = !!h.enabled;
@@ -1362,40 +1495,41 @@ function renderHome(d) {
   aside.classList.toggle('table', h.layout === 'table');
   if (!show) return;
   const s = d.system || {}, mem = s.memory || {}, hist = d.history || {}, last = (a) => (a && a[a.length - 1]) || 0;
-  const cpu = last(hist.cpu), memPct = mem.total ? mem.used / mem.total * 100 : 0;
-  const stats = s.host ? `<div class="stats">
-    <div class="stat"><span>CPU · ${escH(s.cores || '-')} cores</span><b>${cpu}%</b><div class="bar"><i class="${pctCls(cpu)}" style="width:${cpu}%"></i></div></div>
-    <div class="stat"><span>RAM</span><b>${fmtBytes(mem.used)} <span>/ ${fmtBytes(mem.total)}</span></b><div class="bar"><i class="${pctCls(memPct)}" style="width:${memPct.toFixed(0)}%"></i></div></div>
-    <div class="stat"><span>Load (1/5/15 min)</span><b>${(s.load || []).map((x) => x.toFixed(1)).join(' · ') || '-'}</b></div>
-    <div class="stat"><span>Network</span><b>↓ ${perSec(last(hist.rx))}</b><span>↑ ${perSec(last(hist.tx))}</span></div>
-  </div>` : '';
-  let body;
-  if (!h.tiles.length) body = '<div class="empty">No tiles yet. Add them under ⚙ Settings → Start page.</div>';
-  else if (h.layout === 'table') {
-    body = `<div class="tableWrap"><table class="home"><thead><tr><th>Service</th><th>Status</th><th>CPU</th><th>RAM</th><th>Net</th></tr></thead><tbody>${h.tiles.map((t) => {
-      const st = tileStatus(t), g = t.guest;
-      const name = linkOk(t.url) ? `<a href="${escH(t.url)}" target="_blank" rel="noopener noreferrer">${escH(t.name)}</a>` : `<span>${escH(t.name)}</span>`;
-      return `<tr data-tip="${escH(t.check)}${g ? `\n${g.type === 'lxc' ? 'LXC' : 'VM'} ${g.id} ${g.name || ''}` : ''}"><td class="n">${iconHtml(t)}${name}</td><td><i class="dot ${st.cls}" style="display:inline-block"></i> ${escH(st.text)}</td>
-        <td>${g && g.status === 'running' ? g.cpu.toFixed(0) + '%' : '–'}</td><td>${g && g.maxmem ? fmtBytes(g.mem) : '–'}</td><td class="io">${g && g.status === 'running' ? `↓ ${perSec(g.rx)}<br>↑ ${perSec(g.tx)}` : '–'}</td></tr>`;
-    }).join('')}</tbody></table></div>`;
-  } else {
-    body = `<div class="tiles">${h.tiles.map((t) => {
-      const st = tileStatus(t), g = t.guest, tag = linkOk(t.url) ? 'a' : 'div';
-      const attrs = tag === 'a' ? ` href="${escH(t.url)}" target="_blank" rel="noopener noreferrer"` : '';
-      const memPct = g && g.maxmem ? g.mem / g.maxmem * 100 : 0;
-      const extra = g && g.status === 'running' ? `
-        <div class="meta"><span>CPU ${g.cpu.toFixed(0)}%</span><span>RAM ${fmtBytes(g.mem)}</span></div>
-        <div class="bar"><i class="${pctCls(memPct)}" style="width:${memPct.toFixed(0)}%"></i></div>
-        <div class="meta"><span>↓ ${perSec(g.rx)}</span><span>↑ ${perSec(g.tx)}</span></div>` : '';
-      return `<${tag} class="tile"${attrs} data-tip="${escH(t.check)}${g ? `\n${g.type === 'lxc' ? 'LXC' : 'VM'} ${g.id} ${g.name || ''}` : ''}">
-        <div class="top">${iconHtml(t)}<span class="name">${escH(t.name)}</span><i class="dot ${st.cls}"></i></div>
-        <div class="meta${st.cls === 'error' ? ' down' : ''}"><span>${escH(st.text)}</span>${g && g.uptime ? `<span>up ${Math.floor(g.uptime / 86400)}d ${Math.floor(g.uptime % 86400 / 3600)}h</span>` : ''}</div>${extra}
-      </${tag}>`;
-    }).join('')}</div>`;
-  }
+  const key = JSON.stringify([h.layout, !!s.host, h.tiles.map((t) => [t.name, t.url, t.icon, t.check, !!t.guest])]);
+  if (key !== homeKey) { homeKey = key; aside.innerHTML = buildHome(h, s); }
+  const f = (root, name) => root.querySelector(`[data-f="${name}"]`);
+  setText(f(aside, 'host'), s.host || 'Start');
   const up = h.tiles.filter((t) => tileStatus(t).cls !== 'error').length;
-  const html = `<h2>${escH(s.host ? s.host : 'Start')}<small>${up}/${h.tiles.length} online</small></h2>${stats}${body}`;
-  if (html !== homeKey) { homeKey = html; aside.innerHTML = html; }
+  setText(f(aside, 'online'), `${up}/${h.tiles.length} online`);
+  if (s.host) {
+    const cpu = last(hist.cpu), memPct = mem.total ? mem.used / mem.total * 100 : 0;
+    setText(f(aside, 'cores'), String(s.cores || '-'));
+    glide(f(aside, 'cpu'), cpu, pctFmt); setBar(f(aside, 'cpuBar'), cpu);
+    glide(f(aside, 'memUsed'), mem.used, fmtBytes); setText(f(aside, 'memTotal'), fmtBytes(mem.total)); setBar(f(aside, 'memBar'), memPct);
+    setText(f(aside, 'load'), (s.load || []).map((x) => x.toFixed(1)).join(' · ') || '-');
+    glide(f(aside, 'rx'), last(hist.rx), perSec); glide(f(aside, 'tx'), last(hist.tx), perSec);
+  }
+  h.tiles.forEach((t, i) => {
+    const el = aside.querySelector(`[data-i="${i}"]`);
+    if (!el) return;
+    const st = tileStatus(t), g = t.guest, running = g && g.status === 'running';
+    f(el, 'dot').className = 'dot ' + st.cls;
+    setText(f(el, 'st'), st.text);
+    el.classList.toggle('down', st.cls === 'error');
+    const metaSt = f(el, 'metaSt');
+    if (metaSt) metaSt.classList.toggle('down', st.cls === 'error');
+    if (f(el, 'upt')) setText(f(el, 'upt'), g && g.uptime ? `up ${Math.floor(g.uptime / 86400)}d ${Math.floor(g.uptime % 86400 / 3600)}h` : '');
+    if (f(el, 'guest')) f(el, 'guest').classList.toggle('off', !running);
+    if (running) {
+      glide(f(el, 'gcpu'), g.cpu, pctFmt);
+      glide(f(el, 'gram'), g.mem, fmtBytes);
+      setBar(f(el, 'gbar'), g.maxmem ? g.mem / g.maxmem * 100 : 0);
+      glide(f(el, 'grx'), g.rx, perSec); glide(f(el, 'gtx'), g.tx, perSec);
+      if (f(el, 'gio')) setText(f(el, 'gio'), `↓ ${perSec(g.rx)} · ↑ ${perSec(g.tx)}`);
+    } else if (h.layout === 'table') {
+      for (const n of ['gcpu', 'gram', 'gio']) { const c = f(el, n); if (c) { cancelAnimationFrame(c._raf); c._v = undefined; setText(c, '–'); } }
+    }
+  });
 }
 
 // ---------- live feed: chat lines from the workers, the team board, bubbles above their heads ----------
@@ -1406,15 +1540,19 @@ const avatar = (name) => `<span class="av" style="background:${colorOf(name)}">$
 const playerOf = (name) => game.players.find((p) => p.name === name);
 const hhmm = (ms) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 let tab = 'chat';
-try { if (localStorage.getItem('feedClosed') === '1' || (localStorage.getItem('feedClosed') === null && innerWidth < 700)) $('feed').classList.add('closed'); } catch { /* storage blocked */ }
-function syncFold() { $('feedFold').textContent = $('feed').classList.contains('closed') ? '▴' : '▾'; }
+try { if (localStorage.getItem('feedOpen') === '1') $('feed').classList.add('open'); } catch { /* storage blocked */ }
+function syncFold() {
+  const open = $('feed').classList.contains('open');
+  $('feedFold').textContent = open ? '▴' : '▾';
+  $('feedFold').setAttribute('aria-expanded', String(open));
+}
 syncFold();
-$('feedFold').onclick = () => { const c = $('feed').classList.toggle('closed'); syncFold(); try { localStorage.setItem('feedClosed', c ? '1' : '0'); } catch { /* fine */ } };
+$('feedFold').onclick = () => { const o = $('feed').classList.toggle('open'); syncFold(); try { localStorage.setItem('feedOpen', o ? '1' : '0'); } catch { /* fine */ } };
 document.querySelectorAll('#feed [role=tab]').forEach((b) => { b.onclick = () => {
   tab = b.dataset.tab;
   document.querySelectorAll('#feed [role=tab]').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
   $('chat').hidden = tab !== 'chat'; $('team').hidden = tab !== 'team';
-  $('feed').classList.remove('closed'); syncFold();
+  syncFold();
   if (tab === 'team') renderGame();
 }; });
 function msgHtml(e, fresh) {
@@ -1472,13 +1610,34 @@ function renderGame() {
 
 // Live data over Server-Sent Events; plain polling while the stream isn't available.
 let es = null, polling = null;
-function setLive(on) { $('liveDot').classList.toggle('on', on); $('liveDot').querySelector('span').textContent = on ? 'live' : 'offline'; }
+const PAGE_VERSION = '{{VERSION}}';
+function setLive(on, text) {
+  $('liveDot').classList.toggle('on', on);
+  $('liveDot').querySelector('span').textContent = on ? 'live' : 'offline';
+  $('conn').hidden = on;
+  if (!on) $('conn').textContent = text || 'Reconnecting …';
+}
+// After a restart the server may run a newer version (an update, a new container image): load it.
+// Reload at most once per version, so a mismatch that a reload can't fix never turns into a loop.
+function reloadOnce(v) {
+  try { if (sessionStorage.getItem('reloadedFor') === v) return false; sessionStorage.setItem('reloadedFor', v); } catch { /* storage blocked: reload anyway */ }
+  return true;
+}
+function checkVersion(v) {
+  if (v && PAGE_VERSION && !PAGE_VERSION.startsWith('{{') && v !== PAGE_VERSION && reloadOnce(v)) {
+    toast(`Updated to ${v} · reloading …`);
+    setTimeout(() => location.reload(), 1500);
+    return true;
+  }
+  return false;
+}
 function startPolling() { if (!polling) { polling = setInterval(tick, 2000); tick(); } }
 function startStream() {
   if (!window.EventSource) return startPolling();
   es = new EventSource('/api/stream');
   es.addEventListener('hello', (e) => {
     const h = JSON.parse(e.data);
+    if (checkVersion(h.version)) return;
     game = h.game; feedInit(h.events); renderGame(); setLive(true);
     if (polling) { clearInterval(polling); polling = null; }
   });
@@ -1486,8 +1645,9 @@ function startStream() {
   es.addEventListener('feed', (e) => addMsg(JSON.parse(e.data)));
   es.addEventListener('game', (e) => { game = JSON.parse(e.data); renderGame(); });
   es.addEventListener('reset', () => feedInit([]));
+  es.addEventListener('bye', (e) => setLive(false, JSON.parse(e.data).reason === 'restart' ? 'Restarting with the new settings …' : 'Server restarting …'));
   es.onerror = () => {
-    setLive(false);
+    setLive(false, $('conn').hidden ? 'Reconnecting …' : $('conn').textContent);
     if (es.readyState === EventSource.CLOSED) { es = null; startPolling(); setTimeout(startStream, 15000); }
   };
 }
@@ -1498,9 +1658,11 @@ async function tick() {
     const r = await fetch('/api/data', { cache: 'no-store' });
     if (r.status === 401) { location.href = '/login'; return; }
     const d = await r.json();
+    if (checkVersion(d.version)) return;
     render(d);
     renderHome(d);
-  } catch { $('summary').textContent = 'Dashboard not responding'; }
+    if (!es) setLive(true);
+  } catch { setLive(false, 'Reconnecting …'); }
 }
 
 // ---------- hover popups: what someone is doing, and any problems ----------
@@ -1520,11 +1682,17 @@ function showTip(text, x, y) {
   tip.style.top = Math.max(8, y - tip.offsetHeight - 12) + 'px';
 }
 const hideTip = () => { tip.style.display = 'none'; };
+// Clicking a worker (in the room, on the name tag or the speech bubble) opens that app.
+function openApp(name) {
+  const p = people[name];
+  if (p && p.url) window.open(p.url, '_blank', 'noopener');
+}
 document.addEventListener('mouseover', (e) => {
   const el = e.target.closest && e.target.closest('[data-person], [data-tip]');
   if (!el) return;
   const r = el.getBoundingClientRect();
-  showTip(el.dataset.person ? doing(people[el.dataset.person]) : el.dataset.tip, r.left, r.top);
+  const pp = el.dataset.person && people[el.dataset.person];
+  showTip(pp ? doing(pp) + (pp.url ? '\n\nClick to open ↗' : '') : el.dataset.tip, r.left, r.top);
 });
 document.addEventListener('mouseout', (e) => { if (e.target.closest && e.target.closest('[data-person], [data-tip]')) hideTip(); });
 // pointing at a character in the room
@@ -1546,12 +1714,24 @@ renderer.domElement.addEventListener('pointermove', (e) => {
   while (o && !o.userData.person && !parcels.includes(o) && !o.userData.poster) o = o.parent;
   if (o && o.userData.poster === null) o = null;
   renderer.domElement.style.cursor = o ? 'pointer' : '';
-  if (o && o.userData.person) showTip(doing(o.userData.person), e.clientX, e.clientY);
+  if (o && o.userData.person) showTip(doing(o.userData.person) + (o.userData.person.url ? '\n\nClick to open ↗' : ''), e.clientX, e.clientY);
   else if (o && o.userData.poster) showTip(o.userData.poster, e.clientX, e.clientY);
   else if (o) showTip(queueText(latestSab), e.clientX, e.clientY);
   else hideTip();
 });
 renderer.domElement.addEventListener('pointerleave', hideTip);
+let downAt = null;
+renderer.domElement.addEventListener('pointerdown', (e) => { downAt = [e.clientX, e.clientY]; });
+renderer.domElement.addEventListener('pointerup', (e) => {
+  // a click, not the end of turning the room
+  if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 6) return;
+  const r = renderer.domElement.getBoundingClientRect();
+  pointer.set((e.clientX - r.left) / r.width * 2 - 1, 1 - (e.clientY - r.top) / r.height * 2);
+  ray.setFromCamera(pointer, camera);
+  let o = (ray.intersectObjects(Object.values(people).filter((p) => p.root.visible).map((p) => p.root), true)[0] || {}).object;
+  while (o && !o.userData.person) o = o.parent;
+  if (o) openApp(o.userData.person.name);
+});
 
 const clock = new THREE.Clock();
 function frame() {

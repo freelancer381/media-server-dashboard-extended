@@ -72,8 +72,15 @@ Settings → Updates says when a new version is out. To update:
 docker compose pull && docker compose up -d
 ```
 
-Settings, feed and points stay in `./data`. To automate updates you can use e.g. Watchtower; a fixed
-version tag (`:0.2`) only gets fixes of that series.
+Settings, feed and points stay in `./data`. A fixed version tag (`:0.2`) only gets fixes of that series.
+
+Restarts are graceful: on `docker stop` the dashboard tells open pages, saves the feed and the points and
+exits within a second. Open pages show "Reconnecting …", connect again by themselves and reload once if
+a newer version is now running, so nobody has to refresh by hand.
+
+To update automatically, a tool that pulls new images and recreates the container works well with that,
+for example Watchtower (`--label-enable`; the Compose file already carries its label). Use a fixed
+series tag such as `:0.2` if you only want fixes to arrive automatically.
 
 Pulling the image needs access to `ghcr.io` and `pkg-containers.githubusercontent.com`; `cosign verify`
 also needs `tuf-repo-cdn.sigstore.dev`.

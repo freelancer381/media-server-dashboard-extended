@@ -30,7 +30,7 @@ def iso(ms):
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ms / 1000))
 
 
-def payload(title):
+def payload(title, version="demo"):
     now = time.time()
     ms = int(now * 1000)
     ts = [now - (149 - i) * 2 for i in range(150)]
@@ -58,11 +58,16 @@ def payload(title):
         "Prowlarr": "Searching for Paper Moons" if phase == 2 else None,
         "Bazarr": "Search for missing subtitles" if phase == 3 else None,
     }
-    names = ["Home Cinema", "Radarr", "Sonarr", "Bazarr", "Prowlarr", "SABnzbd"]
+    names = ["Home Cinema", "Radarr", "Sonarr", "Bazarr", "Prowlarr", "SABnzbd", "Lidarr", "Jellyfin", "Readarr"]
+    # Clicking a worker in the office opens its app; in the demo, the project's website.
+    sites = {"Radarr": "https://radarr.video", "Sonarr": "https://sonarr.tv", "Bazarr": "https://www.bazarr.media", "Prowlarr": "https://prowlarr.com",
+             "SABnzbd": "https://sabnzbd.org", "Lidarr": "https://lidarr.audio", "Jellyfin": "https://jellyfin.org", "Readarr": "https://readarr.com"}
     tasks = {**activity, "SABnzbd": f"Downloading {queue[0]['name']} · {round(queue[0]['pct'])}%",
              "Home Cinema": f"Streaming {streams[0]['title']} to {watching}" if streams else None}
     nxt = [{"title": q["name"], "pct": round(q["pct"]), "size": q["size"]} for q in queue]
-    services = [{"name": n, "up": True, "issues": [], "task": tasks.get(n), "next": nxt if n in ("SABnzbd", "Radarr") else []} for n in names]
+    tasks.update({"Lidarr": "Searching for new albums" if phase in (0, 2) else None, "Jellyfin": "Transcoding a stream" if phase == 1 else None,
+                  "Readarr": "RefreshAuthor" if phase == 3 else None})
+    services = [{"name": n, "up": True, "url": sites.get(n, ""), "issues": [], "task": tasks.get(n), "next": nxt if n in ("SABnzbd", "Radarr") else []} for n in names]
 
     poster = lambda kind, i: f"/demo-poster/{kind}{i}.svg"
     return json.dumps({
@@ -89,7 +94,7 @@ def payload(title):
         "network": {"lan": "", "vpn": False, "online": True, "ping": 14.0},
         "disks": [{"name": "local-zfs", "total": 900 * GB, "free": 610 * GB}, {"name": "media", "total": 16000 * GB, "free": 2700 * GB}],
         "proxmox": {"ok": True, "guests": []},
-        "version": "demo", "update": {"available": None, "state": "idle", "last": {}, "acked": True},
+        "version": version, "update": {"available": None, "state": "idle", "last": {}, "acked": True},
         "home": {"enabled": True, "side": "right", "layout": "grid", "tiles": [
             {"name": n, "url": "", "icon": ic, "check": f"192.168.1.{20 + i}:{port}", "up": True, "ms": 1 + i % 3,
              "guest": {"id": 101 + i, "name": n.lower(), "type": "lxc", "status": "running", "cpu": round(wave(now, 30 + i * 7, 1, 35, i), 1),

@@ -91,7 +91,8 @@ then **Start** the project again. Or over SSH in the project folder:
 sudo docker compose pull && sudo docker compose up -d
 ```
 
-Your settings, the feed and the points stay in `data`.
+Your settings, the feed and the points stay in `data`. Open dashboard pages reconnect by themselves
+after the restart and reload once with the new version.
 
 ## Troubleshooting
 

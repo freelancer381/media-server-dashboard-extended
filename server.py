@@ -20,6 +20,7 @@ import os
 import queue
 import re
 import secrets
+import signal
 import socket
 import ssl
 import sys
@@ -106,6 +107,8 @@ def make_app(key, a, base=None):
         "auth": a.get("auth") or ("query" if base.get("kind") == "sabnzbd" else "header"),
         "auth_name": a.get("auth_name") or ("X-API-KEY" if base.get("kind") == "bazarr" else "X-Api-Key"),
         "health_path": a.get("health_path") or "/",
+        # Where the app's own web interface opens from the office (the API address unless set separately).
+        "web_url": (a.get("web_url") or url).rstrip("/"),
     }
 
 
@@ -374,7 +377,7 @@ def home_payload():
 # ---------- apps ----------
 def read_services():
     """Does each app accept connections on its port?"""
-    state["services"] = [{"name": a["name"], "key": a["key"], "up": reachable(a["host"], a["port"]) is not None} for a in APPS]
+    state["services"] = [{"name": a["name"], "key": a["key"], "url": a["web_url"], "up": reachable(a["host"], a["port"]) is not None} for a in APPS]
 
 
 def poster(item):
@@ -740,7 +743,7 @@ def current_payload():
     """The page data, worked out at most once a second however many pages are open."""
     with payload_lock:
         if time.time() - payload_cache["at"] > 1:
-            payload_cache["body"] = demo.payload(TITLE) if DEMO else payload()
+            payload_cache["body"] = demo.payload(TITLE, VERSION) if DEMO else payload()
             payload_cache["at"] = time.time()
         return payload_cache["body"]
 
@@ -773,7 +776,7 @@ def watch_alerts():
 def payload():
     upcoming = sorted(state["radarr"].get("upcoming", []) + state["sonarr"].get("upcoming", []), key=lambda u: u["when"])[:8]
     issues = alerts()
-    services = [{"name": s["name"], "up": s["up"], "issues": [a for a in issues if a["source"] == s["name"]], "task": activity(s["name"]) if s["up"] else None, "next": up_next(s["name"]) if s["up"] else []} for s in state["services"]]
+    services = [{"name": s["name"], "up": s["up"], "url": s.get("url") or "", "issues": [a for a in issues if a["source"] == s["name"]], "task": activity(s["name"]) if s["up"] else None, "next": up_next(s["name"]) if s["up"] else []} for s in state["services"]]
     sab = state["sab"]
     if sab.get("queue"):  # downloads by the name they'll have in the library
         sab = {**sab, "queue": [{**q, "name": download_titles.get((q.get("id") or "").lower()) or tidy(q["title"])} for q in sab["queue"]]}
@@ -959,7 +962,8 @@ def public_config():
         "proxmox": {"url": p.get("url", ""), "node": p.get("node", ""), "token_id": p.get("token_id", ""), "has_secret": bool(p.get("token_secret")),
                     "verify_tls": p.get("verify_tls", True), "ca_file": p.get("ca_file", "")},
         "storages": STORAGES, "watch_guests": WATCH_GUESTS,
-        "apps": {k: {"enabled": bool(a.get("url")) and a.get("enabled", True), "url": a.get("url", ""), "has_key": bool(a.get("api_key")), "verify_tls": a.get("verify_tls", True)}
+        "apps": {k: {"enabled": bool(a.get("url")) and a.get("enabled", True), "url": a.get("url", ""), "web_url": a.get("web_url", ""),
+                     "has_key": bool(a.get("api_key")), "verify_tls": a.get("verify_tls", True)}
                  for k, a in ((k, (c.get("apps") or {}).get(k) or {}) for k in BUILTIN)},
         "builtin": {k: {"name": b["name"], "port": b["port"]} for k, b in BUILTIN.items()},
         "custom_apps": [{**{k: v for k, v in a.items() if k != "api_key"}, "has_key": bool(a.get("api_key"))} for a in c.get("custom_apps") or []],
@@ -1082,7 +1086,8 @@ def build_config(req):
         k = a.get("api_key") or ((old.get("apps") or {}).get(key) or {}).get("api_key", "")
         if not k:
             raise ValueError(f"{BUILTIN[key]['name']}: API key is missing")
-        c["apps"][key] = {"url": clean_url(a.get("url")), "api_key": k, "verify_tls": bool(a.get("verify_tls", True))}
+        c["apps"][key] = {"url": clean_url(a.get("url")), "api_key": k, "verify_tls": bool(a.get("verify_tls", True)),
+                          **({"web_url": clean_url(a["web_url"])} if (a.get("web_url") or "").strip() else {})}
 
     c["custom_apps"] = []
     seen = set(b["name"].lower() for b in BUILTIN.values())
@@ -1097,6 +1102,7 @@ def build_config(req):
         auth = a.get("auth") if a.get("auth") in AUTH_KINDS else "header"
         prev = next((x for x in old.get("custom_apps") or [] if x.get("name") == name), {})
         entry = {"name": name, "kind": kind, "url": clean_url(a.get("url")), "auth": auth, "verify_tls": bool(a.get("verify_tls", True)),
+                 **({"web_url": clean_url(a["web_url"])} if (a.get("web_url") or "").strip() else {}),
                  "api_key": a.get("api_key") or prev.get("api_key", "")}
         if auth != "none":
             entry["auth_name"] = (a.get("auth_name") or "X-Api-Key").strip()[:64]
@@ -1160,6 +1166,21 @@ def write_private(path, text):
     os.replace(tmp, path)
 
 
+def goodbye(reason):
+    """Tell open pages the server is going away (they show "reconnecting" and come back by themselves) and save."""
+    try:
+        LIVE.broadcast("bye", {"reason": reason})
+        time.sleep(0.2)
+    finally:
+        LIVE.flush()
+
+
+def on_sigterm(signum, frame):
+    # docker stop / systemctl stop: as PID 1 in a container Python would ignore SIGTERM without a handler.
+    goodbye("stop")
+    os._exit(0)
+
+
 def save_and_restart(c):
     write_private(CONFIG_FILE, json.dumps(c, indent=2) + "\n")
     if c.get("caddy_site_file"):
@@ -1172,6 +1193,7 @@ def save_and_restart(c):
 
     def restart():
         time.sleep(0.7)
+        goodbye("restart")
         os.execv(sys.executable, [sys.executable] + sys.argv)
     threading.Thread(target=restart, daemon=True).start()
 
@@ -1221,7 +1243,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def page(self, name):
         with open(os.path.join(HERE, name), "rb") as f:
-            self.reply(200, f.read().replace(b"{{TITLE}}", html.escape(TITLE).encode()), "text/html; charset=utf-8")
+            body = f.read().replace(b"{{TITLE}}", html.escape(TITLE).encode()).replace(b"{{VERSION}}", html.escape(VERSION).encode())
+            self.reply(200, body, "text/html; charset=utf-8")
 
     def json(self, code, obj):
         self.reply(code, json.dumps(obj).encode(), "application/json")
@@ -1293,6 +1316,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("X-Accel-Buffering", "no")
             self.end_headers()
             send = lambda name, data: self.wfile.write(f"event: {name}\ndata: {data}\n\n".encode()) or self.wfile.flush()
+            self.wfile.write(b"retry: 2000\n\n")  # reconnect quickly after a restart
             send("hello", json.dumps({"events": LIVE.recent(), "game": LIVE.summary(), "version": VERSION}, ensure_ascii=False))
             send("data", current_payload())
             while True:
@@ -1466,4 +1490,5 @@ if __name__ == "__main__":
             looped(30, read_bazarr)
             looped(15, read_custom)
             looped(5, read_activity)
+    signal.signal(signal.SIGTERM, on_sigterm)
     ThreadingHTTPServer((BIND, PORT), Handler).serve_forever()

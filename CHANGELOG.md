@@ -5,6 +5,13 @@ becomes its GitHub release text, so write it for the people who run the dashboar
 
 ## Unreleased
 
+- Office: click a worker, its name tag or its speech bubble to open that app (optional separate browser address per app in the settings).
+- Office: every worker has a place of its own; from the seventh on they work at the whiteboard and get their own break spots, so nobody stands inside anybody else. Called back halfway, workers retrace their steps instead of walking through desks.
+- Office: name tags and bubbles stay inside the view and step aside instead of covering each other; the live feed moved to the empty top-left corner.
+- Start page: tiles and the table update in place; numbers glide, bars ease, new tiles fade in.
+- Graceful restarts: the server saves and closes on stop (also as PID 1 in Docker), pages show "Reconnecting …" and reload once when a newer version is running.
+- Dashboard: tidier header, focus outlines, smoother meters; animations respect "reduce motion".
+
 ## 0.2.1 - 2026-11-02
 
 - Everything is in English now: the setup wizard and settings, the live feed, the start page, update messages, the README and the guides.

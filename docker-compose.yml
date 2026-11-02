@@ -10,6 +10,12 @@ services:
     # Or build it from this folder instead: comment out "image" and use "build: ."
     container_name: media-server-dashboard
     restart: unless-stopped
+    # The dashboard saves and closes within a second on stop; open pages show "reconnecting" and reload
+    # themselves when a new version comes up, so restarts and image updates need no manual refresh.
+    stop_grace_period: 10s
+    labels:
+      # For tools that update containers automatically (e.g. Watchtower with --label-enable).
+      com.centurylinklabs.watchtower.enable: "true"
     ports:
       - "8900:8900"
     volumes:

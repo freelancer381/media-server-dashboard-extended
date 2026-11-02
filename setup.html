@@ -74,6 +74,16 @@ pre.log { margin: 0; max-height: 200px; overflow: auto; font-size: 11.5px; backg
 .summary dd { margin: 0; overflow-wrap: anywhere; }
 code { background: rgba(255, 255, 255, .1); padding: 1px 5px; border-radius: 6px; font-size: 12.5px; }
 [hidden] { display: none !important; }
+/* settings mode: tabs instead of a wizard, and a save bar on every page */
+#savebar { position: sticky; bottom: 12px; margin-top: 14px; display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 16px; border-radius: 16px;
+  background: rgba(20, 26, 46, .92); border: 1px solid rgba(106, 168, 255, .45); box-shadow: 0 12px 30px rgba(0, 0, 0, .4); animation: barIn .25s ease-out; }
+#savebar .msg { flex: 1; font-size: 13px; }
+#savebar .msg b { color: #9cc4ff; }
+@keyframes barIn { from { opacity: 0; transform: translateY(10px); } }
+nav button { transition: background .15s, color .15s; }
+nav button:hover:not([aria-current]) { color: var(--text); border-color: rgba(255, 255, 255, .3); }
+nav button.dirty::after { content: ' •'; color: #9cc4ff; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
 </style>
 </head>
 <body>
@@ -227,6 +237,10 @@ code { background: rgba(255, 255, 255, .1); padding: 1px 5px; border-radius: 6px
   </section>
 
   <div class="row end" id="pager" style="margin-top:14px"><button class="ghost" id="prev">← Back</button><button id="next">Next →</button></div>
+  <div id="savebar" role="region" aria-label="Unsaved changes" hidden>
+    <span class="msg"><b>Unsaved changes</b> <span class="hint" id="saveHint">Saving restarts the service; open pages reconnect by themselves.</span></span>
+    <button class="ghost" id="discard">Discard</button><button id="saveNow">Save</button>
+  </div>
 </main>
 
 <script>
@@ -245,7 +259,7 @@ const PRESETS = {
   generic: { name: '', kind: 'generic', auth: 'header', auth_name: 'X-Api-Key', health_path: '/' },
 };
 
-let cfg = null, token = '', step = 0, pveResult = null;
+let cfg = null, token = '', step = 0, pveResult = null, pveReady = Promise.resolve();
 
 async function api(path, body) {
   const r = await fetch(path, {
@@ -266,12 +280,15 @@ function show(i) {
   const all = sections();
   step = Math.max(0, Math.min(i, all.length - 1));
   all.forEach((s, k) => s.classList.toggle('on', k === step));
-  $('steps').innerHTML = all.map((s, k) => `<button data-k="${k}" ${k === step ? 'aria-current="step"' : ''} ${!cfg ? 'disabled' : ''}>${k + 1}. ${esc(s.dataset.step)}</button>`).join('');
+  const tabs = cfg && cfg.setup_done;
+  $('steps').innerHTML = all.map((s, k) => `<button data-k="${k}" data-id="${s.id}" ${k === step ? 'aria-current="step"' : ''} ${!cfg ? 'disabled' : ''}>${tabs ? '' : k + 1 + '. '}${esc(s.dataset.step)}</button>`).join('');
+  markDirty();
   const isToken = all[step].id === 's-token', isDone = all[step].id === 's-done';
-  $('pager').hidden = isToken;
+  $('pager').hidden = isToken || (cfg && cfg.setup_done);
   $('prev').disabled = step === 0 || (all[0].id === 's-token' && step === 1);
   $('next').hidden = isDone;
   if (isDone) renderSummary();
+  if (cfg && cfg.setup_done) location.hash = all[step].id.slice(2);
   if (all[step].id === 's-updates') pollUpdates(true);
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -351,6 +368,7 @@ function builtinCard(key, b, a) {
         <label>URL<input type="url" class="url" value="${esc(a.url)}" placeholder="http://192.168.1.x:${b.port}"></label>
         <label>API key ${a.has_key ? '<span class="hint">(saved – leave empty to keep it)</span>' : ''}<input type="password" class="key" autocomplete="off"></label>
       </div>
+      <label>Open in the browser at <span class="hint">(optional, if not the URL above; clicking the worker in the office opens it)</span><input type="url" class="web" value="${esc(a.web_url || '')}" placeholder="https://radarr.home.lan"></label>
       <div class="row"><label class="check"><input type="checkbox" class="verify" ${a.verify_tls !== false ? 'checked' : ''}> Check the certificate (https)</label>
         <button class="ghost test">Test</button><span class="status"></span></div>
     </div>`;
@@ -371,6 +389,7 @@ function customCard(a) {
         <label>URL<input type="url" class="url" value="${esc(a.url || '')}" placeholder="http://192.168.1.x${a.port ? ':' + a.port : ''}"></label>
         <label>API key / token ${a.has_key ? '<span class="hint">(saved)</span>' : ''}<input type="password" class="key" autocomplete="off"></label>
       </div>
+      <label>Open in the browser at <span class="hint">(optional)</span><input type="url" class="web" value="${esc(a.web_url || '')}" placeholder="https://…"></label>
       <div class="grid2 arrOnly"><label>API version${sel('apiv', [['v1', 'v1 (Lidarr, Readarr, Prowlarr)'], ['v3', 'v3 (Radarr, Sonarr, Whisparr)']], a.api_version || 'v1')}</label></div>
       <div class="grid2 genOnly">
         <label>Status path<input type="text" class="health" value="${esc(a.health_path || '/')}"></label>
@@ -390,7 +409,7 @@ function customCard(a) {
   ['.kind', '.auth', '.name'].forEach((c) => q(c).addEventListener('input', sync));
   q('.remove').onclick = () => el.remove();
   sync();
-  el.read = () => ({ name: q('.name').value.trim(), kind: q('.kind').value, url: q('.url').value.trim(), api_key: q('.key').value, api_version: q('.apiv').value,
+  el.read = () => ({ name: q('.name').value.trim(), kind: q('.kind').value, url: q('.url').value.trim(), web_url: q('.web').value.trim(), api_key: q('.key').value, api_version: q('.apiv').value,
     health_path: q('.health').value.trim(), auth: q('.auth').value, auth_name: q('.authname').value.trim(), verify_tls: q('.verify').checked });
   wireCard(el, el.read);
   return el;
@@ -611,7 +630,8 @@ function load(c) {
   $('pveSecretHint').innerHTML = p.has_secret ? '<span class="hint">(saved – leave empty to keep it)</span>' : '';
   if (p.node) $('pveNode').innerHTML = `<option selected>${esc(p.node)}</option>`;
   syncPve();
-  if (p.url && p.token_id && p.has_secret) testPve();
+  pveReady = p.url && p.token_id && p.has_secret ? testPve() : Promise.resolve();
+  $('s-done').dataset.step = c.setup_done ? 'Summary' : 'Done';
   $('builtinApps').innerHTML = '';
   for (const [k, b] of Object.entries(c.builtin)) $('builtinApps').append(builtinCard(k, b, c.apps[k]));
   $('customApps').innerHTML = '';
@@ -638,13 +658,16 @@ function load(c) {
 function collect() {
   const apps = {};
   document.querySelectorAll('#builtinApps .app').forEach((el) => {
-    apps[el.dataset.key] = { enabled: el.querySelector('.on').checked, url: el.querySelector('.url').value.trim(), api_key: el.querySelector('.key').value, verify_tls: el.querySelector('.verify').checked };
+    apps[el.dataset.key] = { enabled: el.querySelector('.on').checked, url: el.querySelector('.url').value.trim(), web_url: el.querySelector('.web').value.trim(), api_key: el.querySelector('.key').value, verify_tls: el.querySelector('.verify').checked };
   });
   const pveOn = $('pveOn').checked;
   return {
     title: $('title').value.trim(), user: $('user').value.trim(), password: $('pw').value,
     domain: addrMode() === 'domain' ? $('domain').value.trim() : '', tls: document.querySelector('input[name=tls]:checked').value, ip_access: $('ipAccess').checked,
-    proxmox: pveOn ? pveInput() : {}, storages: pveOn ? checked('pveStorages') : [], watch_guests: pveOn ? checked('pveGuests') : [],
+    proxmox: pveOn ? pveInput() : {},
+    // Without a successful connection test the lists aren't shown; keep what was saved instead of clearing it.
+    storages: !pveOn ? [] : $('pveFound').hidden ? cfg.storages : checked('pveStorages'),
+    watch_guests: !pveOn ? [] : $('pveFound').hidden ? cfg.watch_guests : checked('pveGuests'),
     apps, custom_apps: [...document.querySelectorAll('#customApps .app')].map((el) => el.read()),
     game: { enabled: $('gameOn').checked }, new_webhook_token: $('newHook').checked,
     home: { enabled: $('homeOn').checked, side: document.querySelector('input[name=side]:checked').value, layout: document.querySelector('input[name=layout]:checked').value,
@@ -667,22 +690,69 @@ function renderSummary() {
   $('summary').innerHTML = rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
 }
 
-$('save').onclick = async () => {
-  $('save').disabled = true;
-  $('error').textContent = '';
+// ---------- changes and saving ----------
+// Which tab each saved field belongs to, so the tabs can show where something changed.
+const FIELD_TABS = { title: 's-user', user: 's-user', password: 's-user', domain: 's-address', tls: 's-address', ip_access: 's-address',
+  proxmox: 's-pve', storages: 's-pve', watch_guests: 's-pve', apps: 's-apps', custom_apps: 's-apps', home: 's-home', game: 's-live', new_webhook_token: 's-live' };
+let saved = null;
+function snapshot() { const d = collect(); return Object.fromEntries(Object.entries(d).map(([k, v]) => [k, JSON.stringify(v)])); }
+function changedTabs() {
+  if (!saved) return new Set();
+  const now = snapshot();
+  return new Set(Object.keys(now).filter((k) => now[k] !== saved[k]).map((k) => FIELD_TABS[k]).filter(Boolean));
+}
+function markDirty() {
+  if (!cfg || !cfg.setup_done || !saved) return;
+  const tabs = changedTabs();
+  document.querySelectorAll('#steps button').forEach((b) => b.classList.toggle('dirty', tabs.has(b.dataset.id)));
+  $('savebar').hidden = !tabs.size;
+}
+document.addEventListener('input', () => setTimeout(markDirty));
+document.addEventListener('change', () => setTimeout(markDirty));
+document.addEventListener('click', (e) => { if (e.target.closest('.remove, .up, .down, #addCustom, #addTile, #tilesFromApps')) setTimeout(markDirty); });
+addEventListener('beforeunload', (e) => { if (!$('savebar').hidden && !saving) { e.preventDefault(); e.returnValue = ''; } });
+$('discard').onclick = () => { saving = true; location.reload(); };
+let saving = false;
+async function doSave(statusEl) {
+  // Check every tab first and open the one that needs attention.
+  for (const sec of sections()) {
+    const msg = validate(sec.id);
+    if (msg) { show(sections().indexOf(sec)); statusEl.textContent = msg; statusEl.style.color = 'var(--critical)'; return false; }
+  }
+  saving = true;
   const r = await api('/setup/save', collect());
-  if (!r.ok) { $('save').disabled = false; $('error').textContent = r.error || 'Saving failed'; return; }
-  $('error').style.color = 'var(--muted)';
-  $('error').textContent = 'Saved. The service restarts …';
-  // Wait for the restart, then go to the new address (the domain may take a moment to get its certificate).
+  if (!r.ok) { saving = false; statusEl.style.color = 'var(--critical)'; statusEl.textContent = r.error || 'Saving failed'; return false; }
+  return r;
+}
+$('saveNow').onclick = async () => {
+  $('saveNow').disabled = true;
+  const r = await doSave($('saveHint'));
+  if (!r) { $('saveNow').disabled = false; return; }
+  $('saveHint').style.color = 'var(--muted)';
+  $('saveHint').textContent = 'Saved. The service restarts …';
+  await afterSave(r, $('saveHint'));
+};
+async function afterSave(r, statusEl) {
   const target = new URL(r.url, location.href);
-  const sameOrigin = target.origin === location.origin;
   for (let i = 0; i < 30; i++) {
     await new Promise((res) => setTimeout(res, 1000));
     try { if ((await fetch('/healthz', { cache: 'no-store' })).ok && i > 1) break; } catch (e) { /* still restarting */ }
   }
-  if (sameOrigin) location.href = '/login';
-  else { $('error').innerHTML = `Done. Continue at <a href="${esc(target.href)}login" style="color:var(--s1)">${esc(target.href)}</a> (the certificate may take a moment on the first visit).`; }
+  if (target.origin !== location.origin) {
+    statusEl.innerHTML = `Done. Continue at <a href="${esc(target.href)}login" style="color:var(--s1)">${esc(target.href)}</a> (the certificate may take a moment on the first visit).`;
+    return;
+  }
+  // Settings: stay on the same tab, signed in already; first setup: sign in.
+  if (cfg.setup_done) { location.hash = sections()[step].id.slice(2); location.reload(); } else location.href = '/login';
+}
+$('save').onclick = async () => {
+  $('save').disabled = true;
+  $('error').textContent = '';
+  const r = await doSave($('error'));
+  if (!r) { $('save').disabled = false; return; }
+  $('error').style.color = 'var(--muted)';
+  $('error').textContent = 'Saved. The service restarts …';
+  await afterSave(r, $('error'));
 };
 
 // Signed in already (settings) or first run (needs the token)?
@@ -690,8 +760,9 @@ $('save').onclick = async () => {
   const c = await api('/setup/config');
   if (!c.error) {
     load(c);
-    const want = location.hash === '#updates' ? sections().findIndex((s) => s.id === 's-updates') : 0;
+    const want = location.hash ? sections().findIndex((s) => s.id === 's-' + location.hash.slice(1)) : 0;
     show(Math.max(0, want));
+    if (c.setup_done) pveReady.then(() => { saved = snapshot(); markDirty(); });
   } else { show(0); $('token').focus(); }
 })();
 </script>
