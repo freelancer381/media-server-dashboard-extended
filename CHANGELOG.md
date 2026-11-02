@@ -5,6 +5,8 @@ becomes its GitHub release text, so write it for the people who run the dashboar
 
 ## Unreleased
 
+## 0.3.0 - 2026-11-02
+
 - NZBGet as a download client next to SABnzbd (JSON-RPC with user and password), with an extension for instant live-feed messages.
 - Settings: tabs instead of the wizard once set up, a save bar on every tab when something changed.
 - "Version X available" on the dashboard and in the office, with a one-time heads-up per version.
