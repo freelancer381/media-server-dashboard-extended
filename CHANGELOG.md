@@ -5,6 +5,8 @@ becomes its GitHub release text, so write it for the people who run the dashboar
 
 ## Unreleased
 
+## 0.3.3 - 2026-11-03
+
 - The project moved to github.com/freelancer381/media-server-dashboard-extended; images are now `ghcr.io/freelancer381/media-server-dashboard-extended`.
 - The update service follows a moved repository (GitHub forwards it) and checks signatures against the repository's current name, so installations keep updating after the move.
 
