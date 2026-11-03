@@ -5,6 +5,8 @@ becomes its GitHub release text, so write it for the people who run the dashboar
 
 ## Unreleased
 
+## 0.5.1 - 2026-11-03
+
 Fixed:
 - Settings: several blocks had no room between their parts, so rows ran into each other: the start page options and its tile list, "Check for updates" and the release below it, the domain, Proxmox, webhook and update boxes. "Install new versions automatically" and its hour now sit on one line.
 - Statistics: "When things happen" ran out of its card on narrower windows.
