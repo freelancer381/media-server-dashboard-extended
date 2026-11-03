@@ -5,6 +5,8 @@ becomes its GitHub release text, so write it for the people who run the dashboar
 
 ## Unreleased
 
+## 0.5.0 - 2026-11-03
+
 Added:
 - **Statistics** (📊 Stats, `/stats`): graphs and numbers kept for up to two years, a point per minute for a day, per hour for 90 days and per day after that. Covers CPU, memory, load, network and disk I/O with average and peak; download speed per client, gigabytes per day and queue length; every app's response time; Prowlarr's indexers (queries, grabs, failures, response time); the live feed per day and a weekday × hour heatmap; and the library in detail (qualities, codecs, HDR, audio, genres, decades, studios, the biggest titles, added per month). Saved in `stats.json` in the data folder.
 - **Full screen and kiosk mode** for wall tablets on the dashboard, the office and the statistics: "⛶ Full screen" or the F key. In kiosk mode (`?kiosk` in the address, full screen, or as an app on the home screen) the screen stays on, the pointer hides, settings and sign-out are hidden and the page refreshes once a night. The dashboard can be added to the home screen and opens full screen on the page last used.
