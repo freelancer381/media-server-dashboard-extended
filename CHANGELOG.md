@@ -5,6 +5,8 @@ becomes its GitHub release text, so write it for the people who run the dashboar
 
 ## Unreleased
 
+## 0.3.1 - 2026-11-03
+
 - Office: when the Proxmox host can't be reached, the server catches fire and the staff run around shouting; they calm down and go back when it answers again.
 - Posters on the dashboard and in the office open the title in Plex or Jellyfin (set up as a custom app), otherwise in Radarr or Sonarr.
 - Live feed: dismiss single messages or clear them all, in the office and in a new Live card on the dashboard; dashboard warnings can be dismissed until the problem comes back.
