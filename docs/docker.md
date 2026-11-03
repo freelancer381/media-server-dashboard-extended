@@ -45,7 +45,8 @@ docker run -d --name media-server-dashboard --restart unless-stopped \
 | Variable | Default | Meaning |
 |---|---|---|
 | `MSD_PORT` | `8900` | port inside the container |
-| `MSD_TRUSTED_PROXIES` | empty | comma-separated addresses of your reverse proxy, as the container sees them |
+| `MSD_TRUSTED_PROXIES` | empty | comma-separated addresses or ranges of your reverse proxy, as the container sees them (`172.18.0.1`, `172.16.0.0/12`) |
+| `MSD_HOST_NAME` | the container's name | the name shown for this machine when there is no Proxmox host |
 | `MSD_UPDATE_REPO` | `freelancer381/media-server-dashboard-extended` | where to look for new releases (a notice only) |
 | `TZ` | UTC | time zone for the feed and today's numbers |
 
@@ -57,12 +58,20 @@ Everything else is set in the wizard and stored in `/data/config.json`.
 - For **webhooks** the apps must reach the dashboard: `http://<docker-host>:8900/hook/…`. The ready-made addresses are under Settings → Live feed.
 - Proxmox (optional): URL `https://<proxmox-ip>:8006` and a token with `PVEAuditor` (see [proxmox.md](proxmox.md#creating-the-api-token-by-hand)). Without a CA file, switch off certificate checking in the wizard, or put `pve-root-ca.pem` into `/data` and enter `/data/pve-root-ca.pem`.
 
+## Host numbers without Proxmox
+
+Without a Proxmox host in the wizard the dashboard shows the machine it runs on: CPU, memory, swap, load,
+disk I/O and uptime come from `/proc`, which in a container describes the whole host (the NAS, the Docker
+server). The drives are the folders mounted into the container (`/data`, your media folders). Network
+traffic is the container's own; for the host's, run it with `network_mode: host`. These numbers also feed the
+statistics page (📊 Stats).
+
 ## Behind a reverse proxy (HTTPS)
 
 Nginx Proxy Manager, Traefik, Caddy or Synology: just forward to `http://<host>:8900`.
 
 - **Important for the live feed:** the proxy must not buffer Server-Sent Events (`/api/stream`). Nginx honours the `X-Accel-Buffering: no` header the dashboard sends; Traefik and Caddy need nothing.
-- Set `MSD_TRUSTED_PROXIES` to the address the proxy connects from (with port mapping usually the gateway of the Docker network, e.g. `172.18.0.1`; `docker network inspect <network>` shows it). Then the login lockout hits the real visitor instead of the proxy, and the login cookie is marked `Secure` over HTTPS.
+- Set `MSD_TRUSTED_PROXIES` to the address the proxy connects from (with port mapping usually the gateway of the Docker network, e.g. `172.18.0.1`; `docker network inspect <network>` shows it). A range such as `172.16.0.0/12` (all of Docker's default networks) keeps working when Docker creates the network again with a new gateway; only trust ranges that nothing but your proxy can connect from. Then the login lockout hits the real visitor instead of the proxy, and the login cookie is marked `Secure` over HTTPS.
 
 ### Nginx Proxy Manager
 

@@ -141,10 +141,15 @@ def main():
         s, _, d = c.req("POST", f"/hook/{hook}?source=Radarr", radarr, headers={"Cookie": ""})
         check(s == 200 and json.loads(d)["ok"], "Radarr webhook accepted without login")
         check(c.req("POST", f"/hook/{hook}", b"not json")[0] == 400, "broken webhook bodies are refused")
+        # qBittorrent's "run on torrent finished": curl --data-urlencode "torrent=%N" <url>
+        s, _, d = c.req("POST", f"/hook/{hook}/qBittorrent", "torrent=Dune.Part.Two.2024.2160p.WEB", headers={"Cookie": ""}, ctype="application/x-www-form-urlencoded")
+        check(s == 200 and json.loads(d)["ok"], "qBittorrent's finished-torrent call accepted")
 
         sock, seen, hello = read_events(port, c.cookie, "hello")
         check(any(e["text"].startswith("imported Smoke Movie") for e in hello["events"]), "the stream starts with the history")
         check(hello["game"]["players"][0]["name"] == "Radarr", "the game counted the import")
+        check(any(e["source"] == "qBittorrent" and e["kind"] == "download" and e["text"] == "finished downloading Dune Part Two (2024)" for e in hello["events"]),
+              "and it reads as a finished download with a tidy name")
         c.req("POST", f"/hook/{hook}?source=SABnzbd", {"version": "1.0", "title": "SABnzbd", "message": "Smoke completed", "type": "success"})
         buf, end, got = b"", time.time() + 6, False
         while time.time() < end and not got:
@@ -153,6 +158,15 @@ def main():
         sock.close()
         check(got, "a new webhook arrives live on the stream")
         check(c.req("GET", "/api/stream", headers={"Cookie": ""})[0] == 401, "the stream needs a login")
+
+        s, _, d = c.req("GET", "/api/stats?range=24h")
+        st = json.loads(d) if s == 200 else {}
+        check(s == 200 and {"series", "days", "process", "game"} <= set(st), "the statistics answer")
+        check(c.req("GET", "/api/stats", headers={"Cookie": ""})[0] == 401, "the statistics need a login")
+        check(c.req("GET", "/stats")[0] == 200 and c.req("GET", "/stats", headers={"Cookie": ""})[0] == 303, "the statistics page needs a login")
+        s, _, d = c.req("GET", "/manifest.webmanifest", headers={"Cookie": ""})
+        check(s == 200 and json.loads(d)["display"] == "fullscreen", "the web app manifest is public")
+        check(c.req("GET", "/kiosk.js", headers={"Cookie": ""})[0] == 200 and c.req("GET", "/icon-192.png", headers={"Cookie": ""})[0] == 200, "and so are its script and icons")
 
         s, _, d = c.req("GET", "/api/update")
         check(s == 200 and json.loads(d)["managed"], "updates are managed")

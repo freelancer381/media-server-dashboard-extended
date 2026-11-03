@@ -5,6 +5,15 @@ becomes its GitHub release text, so write it for the people who run the dashboar
 
 ## Unreleased
 
+Added:
+- **Statistics** (📊 Stats, `/stats`): graphs and numbers kept for up to two years, a point per minute for a day, per hour for 90 days and per day after that. Covers CPU, memory, load, network and disk I/O with average and peak; download speed per client, gigabytes per day and queue length; every app's response time; Prowlarr's indexers (queries, grabs, failures, response time); the live feed per day and a weekday × hour heatmap; and the library in detail (qualities, codecs, HDR, audio, genres, decades, studios, the biggest titles, added per month). Saved in `stats.json` in the data folder.
+- **Full screen and kiosk mode** for wall tablets on the dashboard, the office and the statistics: "⛶ Full screen" or the F key. In kiosk mode (`?kiosk` in the address, full screen, or as an app on the home screen) the screen stays on, the pointer hides, settings and sign-out are hidden and the page refreshes once a night. The dashboard can be added to the home screen and opens full screen on the page last used.
+- **Docker and Synology without Proxmox** show the machine they run on: CPU, memory, swap, load, disk I/O, uptime and the free space of the mounted folders, from `/proc` (network: the container's own, or the host's with `network_mode: host`).
+- qBittorrent and rdtclient now show real numbers for today, this week and this month: the dashboard counts them itself.
+- qBittorrent can report a finished torrent instantly: "Run external program on torrent finished" with `curl -fsS --data-urlencode "torrent=%N" <webhook URL>` (details in Settings → Live feed).
+- `MSD_TRUSTED_PROXIES` and `trusted_proxies` take ranges such as `172.16.0.0/12`, so a Docker network created again with a new gateway keeps working.
+- The demo (`--demo`) has qBittorrent next to SABnzbd, and the README has screenshots.
+
 Fixed:
 - Setup wizard: "Behind my own reverse proxy" told Docker installs to forward to port 80, which only applies to the Proxmox LXC (Caddy). In Docker it now says the published port (8900) and to set `MSD_TRUSTED_PROXIES`; the README has a table for both.
 

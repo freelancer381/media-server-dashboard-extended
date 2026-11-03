@@ -38,6 +38,13 @@ jobs:
       - name: Unit tests
         run: python3 -m unittest discover -s tests -v
 
+      - name: Signature check as an unprivileged user really ran
+        # It needs root (as in these containers) to switch to nobody; a skip would hide the 0.4.0 failure again.
+        run: |
+          out=$(python3 -m unittest tests.test_updater.UpdaterTest.test_cosign_as_nobody_reaches_its_files -v 2>&1) || { echo "$out"; exit 1; }
+          echo "$out"
+          echo "$out" | grep -qx "OK"  # "OK (skipped=1)" when it did not run
+
       - name: Smoke test (setup, login, webhook, live stream)
         run: python3 tests/smoke.py
 

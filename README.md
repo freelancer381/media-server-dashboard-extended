@@ -11,6 +11,20 @@ a **Synology**, and watches everything over the network.
 > brings it to Proxmox, Docker and Synology and extends it (see below). The original copyright notice
 > remains in [LICENSE](LICENSE).
 
+<p align="center"><img src="docs/screenshots/office.jpg" alt="The 3D office: the apps as staff at their desks and in the break room, the live feed on the left, the host and app tiles on the right" width="100%"></p>
+
+## Screenshots
+
+All of them with the made-up data of `python3 server.py --demo`.
+
+| Dashboard | Statistics |
+|---|---|
+| <img src="docs/screenshots/dashboard.jpg" alt="Dashboard: CPU, memory, network and download graphs, services, download queue of two clients, drives, recently added movies and shows"> | <img src="docs/screenshots/stats.jpg" alt="Statistics page: CPU with average and peak band, memory, load, network and disk I/O over 24 hours"> |
+| **Statistics: activity** | **Statistics: library** |
+| <img src="docs/screenshots/stats-activity.jpg" alt="Live feed events per day by kind, a weekday-by-hour heatmap, the busiest apps and how events arrive"> | <img src="docs/screenshots/stats-library.jpg" alt="Library in detail: qualities, resolutions, codecs, HDR, genres, decades, the biggest titles, added per month"> |
+
+<p align="center"><img src="docs/screenshots/phone-stats.jpg" alt="The statistics on a phone" width="32%"> <img src="docs/screenshots/phone-dashboard.jpg" alt="The dashboard on a phone" width="32%"></p>
+
 ## Features
 
 - **Dashboard** (`/`): live graphs for CPU, memory, network and downloads, which services are up (hover one to see what's wrong), the SABnzbd queue, storage, recently added movies and shows, and what's coming up in the next 14 days.
@@ -20,7 +34,9 @@ a **Synology**, and watches everything over the network.
 - **Posters** open the title in Plex or Jellyfin (or Radarr/Sonarr); workers open their app.
 - **Team board (gamification):** XP, levels and badges for every worker, today's numbers, a leaderboard and the days without errors. Can be switched off.
 - **Start page** beside the office (left or right, tiles or a table): your own links with icons, online checks by IP:port and, for linked Proxmox guests, CPU, memory, traffic and uptime.
-- **Proxmox:** host stats, storages and the state of containers and VMs through the Proxmox API, with a read-only token.
+- **Proxmox:** host stats, storages and the state of containers and VMs through the Proxmox API, with a read-only token. Without Proxmox (Docker, Synology) the dashboard shows the machine it runs on instead: CPU, memory, load, disk I/O and the mounted drives, from `/proc`.
+- **Statistics** (`/stats`, 📊 Stats): everything the dashboard sees, kept for up to two years (a point per minute for a day, per hour for 90 days, per day after that) and shown as graphs with average and peak: CPU, memory, load, network, disk I/O, download speed per client, gigabytes per day, queue length, every app's response time (median, p95, peak), indexer queries and grab rates, the feed per day, a weekday × hour heatmap, and the library taken apart: qualities, resolutions, codecs, HDR, audio, genres, decades, studios, the biggest titles and what was added per month. Plus the dashboard's own process for the curious.
+- **Full screen and wall tablets:** "⛶ Full screen" (or F) on the dashboard, the office and the statistics. In kiosk mode (full screen, `?kiosk` in the address, or added to the home screen as an app) the screen stays on, the pointer hides, settings and sign-out disappear and the page refreshes itself once a night. Added to the home screen it opens full screen on the page last used.
 - **Download clients:** SABnzbd (API key), NZBGet, qBittorrent and rdtclient (Real-Debrid / AllDebrid, through its qBittorrent-compatible API; user and password): speed, queue, totals and finished or failed downloads in the feed. Several can run side by side; the download card shows them together, each worker its own queue.
 - **Setup wizard** (`/setup`, later ⚙ Settings as tabs with a save bar): user, address (IP or a domain with HTTPS), Proxmox, apps with connection tests, custom apps with presets (Lidarr, Readarr, Whisparr, Jellyseerr, Jellyfin, Plex, Tautulli), start page, live feed and updates.
 - **One-click updates** (LXC): only releases signed by this repository's release workflow are installed, with a backup, a health check and an automatic rollback. Docker and Synology update through the signed image.
@@ -91,7 +107,7 @@ cosign verify ghcr.io/freelancer381/media-server-dashboard-extended:0.2.0 \
 - API keys and the Proxmox token stay on the server (`config.json`, mode 600) and never reach the browser.
 - For Proxmox the `PVEAuditor` role (read-only) is enough. The dashboard never changes anything on the host or in the apps.
 - Webhooks need the secret token in the URL, are limited to 120 a minute and only take JSON. A new address is one checkbox in the settings.
-- After eight wrong logins the real client address is locked out for five minutes, also behind a reverse proxy (`trusted_proxies` or `MSD_TRUSTED_PROXIES`).
+- After eight wrong logins the real client address is locked out for five minutes, also behind a reverse proxy (`trusted_proxies` or `MSD_TRUSTED_PROXIES`, addresses or ranges such as `172.16.0.0/12`).
 - Don't expose it to the internet without HTTPS.
 
 ## Development

@@ -8,3 +8,9 @@ __pycache__/
 .DS_Store
 data/
 dist/
+# What the dashboard keeps when run from the checkout
+events.json
+game.json
+sessions.json
+stats.json
+*.tmp

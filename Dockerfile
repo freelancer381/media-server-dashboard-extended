@@ -21,6 +21,8 @@ ENV MSD_DATA=/data \
 WORKDIR /app
 COPY *.py *.html VERSION LICENSE ./
 COPY vendor ./vendor
+COPY kiosk.js ./
+COPY icons ./icons
 # Settings, password hash, API keys and the game live in /data: mount a volume or a folder there.
 RUN useradd --uid 1000 --user-group --home-dir /data --no-create-home msd \
     && mkdir -p /data && chown msd:msd /data

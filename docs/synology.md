@@ -79,6 +79,13 @@ the proxy reaches the container from: **Container Manager → Network →** `med
 *Gateway* (e.g. `172.20.0.1`). Put it into `MSD_TRUSTED_PROXIES` in the Compose file and rebuild the
 project.
 
+## NAS numbers
+
+Without a Proxmox host the dashboard shows the NAS itself: CPU, memory, load, disk activity and uptime, and
+the free space of the folders mounted into the container (your media share). Network traffic is the
+container's own; with `network_mode: host` in the Compose file it is the NAS's. All of it also goes into the
+statistics page (📊 Stats). See [docker.md](docker.md#host-numbers-without-proxmox).
+
 ## Updates
 
 When **Settings → Updates** reports a new version:

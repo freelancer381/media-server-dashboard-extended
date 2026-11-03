@@ -12,3 +12,4 @@ config.json
 .secret
 setup-token.txt
 *.log
+docs/screenshots

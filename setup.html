@@ -530,7 +530,7 @@ const HOOK_APPS = [
   ['Readarr', 'Settings → Connect → + → Webhook.'],
   ['Bazarr', 'Settings → Notifications → add an Apprise URL (json:// instead of http://, jsons:// instead of https://).', true],
   ['SABnzbd', 'Config → Notifications → enable Apprise, enter the URL (json:// or jsons://), tick "Job finished" and "Job failed".', true],
-  ['qBittorrent', 'Not needed: the dashboard notices finished and failed torrents by itself.'],
+  ['qBittorrent', 'Optional, the dashboard notices finished torrents by itself within seconds. For instantly: Tools → Options → Downloads → "Run external program on torrent finished": curl -fsS --data-urlencode "torrent=%N" followed by this URL (curl has to be there where qBittorrent runs; the linuxserver.io image has it).'],
   ['rdtclient', 'Not needed: the dashboard notices finished and failed downloads by itself.'],
   ['NZBGet', 'NZBGet has no webhooks of its own: copy extras/nzbget/DashboardNotify.py into its scripts folder, enable it under Extension scripts and paste this URL as its WebhookUrl. Without it the dashboard still notices finished downloads.'],
   ['Jellyfin', 'Plugin "Webhook" → Generic Destination (template below).'],

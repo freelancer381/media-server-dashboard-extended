@@ -96,6 +96,12 @@ class Helpers(unittest.TestCase):
         self.assertEqual(server.tile_target({"url": "http://x", "check": "10.0.0.5:5000"}), ("10.0.0.5", 5000))
         self.assertEqual(server.tile_target({"check": "nas.lan"}), ("nas.lan", 80))
 
+    def test_trusted_proxies_take_ranges(self):
+        n = server.Networks(["172.16.0.0/12", "10.0.0.5", "fd00::/8", "not an address"])
+        self.assertEqual([ip in n for ip in ("172.18.0.1", "172.32.0.1", "10.0.0.5", "10.0.0.6", "::ffff:172.20.0.1", "fd00::1", "", "x")],
+                         [True, False, True, False, True, True, False, False])
+        self.assertFalse(server.Networks([]))
+
     def test_caddy_site(self):
         self.assertIn("http:// {", server.caddy_site({}))
         site = server.caddy_site({"domain": "d.home.lan", "tls": "internal", "ip_access": False})
@@ -134,12 +140,15 @@ def downloaders(*apps):
     server.DOWNLOADERS[:] = list(apps)
     server.DL_NAMES.clear()
     server.DL_NAMES.update(a["name"] for a in apps)
-    for d in (server.dl_state, server.dl_seen, server.qb_cookies, server.qb_alltime):
+    for d in (server.dl_state, server.dl_seen, server.qb_cookies, server.qb_alltime, server.qb_session):
         d.clear()
+    saved = saved + (server.STATS,)
+    server.STATS = server.historymod.Recorder(os.path.join(tempfile.mkdtemp(), "stats.json"))  # a fresh count per test
     return saved
 
 
 def restore(saved):
+    server.STATS = saved[-1]
     for target, value in zip((server.BY_KIND, server.DOWNLOADERS, server.DL_NAMES, server.dl_state, server.dl_seen, server.qb_cookies), saved):
         target.clear()
         (target.update if not isinstance(target, list) else target.extend)(value)
@@ -234,6 +243,54 @@ class Posters(unittest.TestCase):
         self.assertEqual(st["last"]["error"], "invalid signature: x")
 
 
+class LocalHost(unittest.TestCase):
+    """Without Proxmox (Docker, Synology) the host's numbers come from /proc."""
+
+    def write(self, d, cpu, rx, sectors):
+        os.makedirs(f"{d}/net", exist_ok=True)
+        files = {
+            "stat": f"cpu  {cpu[0]} 0 {cpu[1]} {cpu[2]} {cpu[3]} 0 0 0 0 0\ncpu0 1 0 1 1 0 0 0 0 0 0\n",
+            "meminfo": "MemTotal:       16384000 kB\nMemFree:         1000000 kB\nMemAvailable:    4096000 kB\nSwapTotal:       2048000 kB\nSwapFree:        1024000 kB\n",
+            "loadavg": "1.50 1.25 1.00 2/300 1234\n", "uptime": "86400.00 1000.00\n",
+            "net/dev": f"Inter-|   Receive\n face |bytes\n    lo: 999 0 0 0 0 0 0 0 999 0 0 0 0 0 0 0\n  eth0: {rx} 10 0 0 0 0 0 0 500 5 0 0 0 0 0 0\n",
+            "diskstats": f"   8       0 sda 10 0 {sectors} 0 10 0 {sectors} 0 0 0 0\n   8       1 sda1 10 0 999999 0 10 0 999999 0 0 0 0\n   7       0 loop0 1 0 999999 0 1 0 0 0 0 0 0\n",
+            "cpuinfo": "processor\t: 0\nmodel name\t: Intel(R) Celeron(R) J4125 CPU @ 2.00GHz\n",
+            "mounts": f"/dev/sda1 {d} ext4 rw 0 0\n/dev/sda1 /etc/hostname ext4 rw 0 0\nproc /proc proc rw 0 0\n",
+        }
+        for name, text in files.items():
+            with open(f"{d}/{name}", "w") as f:
+                f.write(text)
+
+    def test_cpu_memory_network_disk(self):
+        d = tempfile.mkdtemp()
+        saved = ({k: list(v) for k, v in server.history.items()}, dict(server.state["system"]), dict(server.local_cpu))
+        try:
+            for c in server.counters.values():
+                c.total = c.at = None
+            server.local_cpu.clear()
+            self.write(d, (100, 100, 800, 0), 1000, 0)
+            server.read_local(d)
+            server.counters["rx"].at -= 2; server.counters["disk"].at -= 2  # two seconds later
+            self.write(d, (150, 150, 900, 0), 1000 + 2 * 1048576, 4096)
+            server.read_local(d)
+            s = server.state["system"]
+            self.assertEqual((s["source"], s["cpu_name"], s["load"]), ("local", "Intel(R) Celeron(R) J4125 CPU @ 2.00GHz", [1.5, 1.25, 1.0]))
+            self.assertEqual(s["cpu"]["idle"], 50.0)  # 100 of 200 ticks busy
+            self.assertEqual((s["memory"]["total"], s["memory"]["used"]), (16384000 * 1024, (16384000 - 4096000) * 1024))
+            self.assertEqual(s["memory"]["swap_used"], 1024000 * 1024)
+            self.assertEqual(server.history["cpu"][-1], 50)
+            self.assertAlmostEqual(server.history["rx"][-1], 1048576, delta=2000)  # lo left out
+            self.assertAlmostEqual(server.history["disk"][-1], 4096 * 512 * 2 / 2, delta=2000)  # whole disks only, not partitions or loops
+            server.read_local_disks(d)
+            self.assertEqual([x["name"] for x in server.state["disks"]], [d])  # the bind-mounted file and /proc are left out
+            self.assertNotIn("Not set up yet", " ".join(a["message"] for a in server.alerts()))
+        finally:
+            for k, v in saved[0].items():
+                server.history[k].clear(); server.history[k].extend(v)
+            server.state["system"] = saved[1]
+            server.local_cpu.clear(); server.local_cpu.update(saved[2])
+
+
 class CaddyHelper(unittest.TestCase):
     """scripts/msd-caddy.py (root) writes Caddy's site; it must match the app's view and let nothing odd through."""
 
@@ -286,6 +343,7 @@ class FakeQB:
             {"hash": "ccc333", "name": "Old.Seed", "progress": 1.0, "size": 2**30, "amount_left": 0, "eta": 8640000,
              "state": "stalledUP", "dlspeed": 0, "priority": 0, "added_on": 1}]
         self.logins = 0
+        self.session_bytes = 0
         self.referers = set()
         outer = self
 
@@ -318,7 +376,8 @@ class FakeQB:
                 if u.path == "/api/v2/app/version":
                     return self.send(200, b"v5.0.2")
                 if u.path == "/api/v2/transfer/info" and transfer:
-                    return self.send(200, {"dl_info_speed": 4 * 2**20})
+                    outer.session_bytes += 300 * 2**20  # what it downloaded since the last look
+                    return self.send(200, {"dl_info_speed": 4 * 2**20, "dl_info_data": outer.session_bytes})
                 if u.path == "/api/v2/sync/maindata" and transfer:
                     return self.send(200, {"server_state": {"alltime_dl": 7 * 2**40}})
                 if u.path == "/api/v2/torrents/info":
@@ -357,7 +416,14 @@ class QBittorrent(unittest.TestCase):
         self.assertEqual([q["id"] for q in sab["queue"]], ["aaa111", "bbb222"])
         self.assertEqual((sab["queue"][0]["pct"], sab["queue"][0]["left"], sab["queue"][1]["left"], sab["queue"][1]["state"]), (25.0, "0:10:00", "", "Queued"))
         self.assertEqual((sab["speed"], sab["left"]), (4 * 2**20, 7 * 2**30))
-        self.assertEqual(sab["totals"], {"day": None, "week": None, "month": None, "total": 7 * 2**40})
+        self.assertEqual(sab["totals"], {"day": 0, "week": 0, "month": 0, "total": 7 * 2**40})  # nothing counted yet
+        server.read_qbittorrent("qbittorrent")
+        server.read_qbittorrent("qbittorrent")
+        t = server.state["sab"]["totals"]
+        self.assertEqual((t["day"], t["week"], t["month"]), (600 * 2**20,) * 3)  # the dashboard counts qBittorrent's days itself
+        self.qb.session_bytes = 0  # qBittorrent restarted: its session count starts over
+        server.read_qbittorrent("qbittorrent")
+        self.assertEqual(server.state["sab"]["totals"]["day"], 900 * 2**20)
         self.assertEqual(self.qb.referers, {self.qb.url})  # qBittorrent's CSRF check wants its own address
 
     def test_finished_and_failed_reach_the_feed(self):
@@ -404,6 +470,9 @@ class QBittorrent(unittest.TestCase):
             self.assertEqual((sab["queueTotal"], sab["speed"]), (4, 7 * 2**20))
             self.assertEqual([q["client"] for q in sab["queue"]], ["qBittorrent", "rdtclient", "qBittorrent", "rdtclient"])  # taking turns
             self.assertEqual(sab["totals"]["total"], 7 * 2**40)  # rdtclient has no all-time number; qBittorrent's still shows
+            server.qb_session["rdtclient"]["at"] -= 10  # ten seconds later, at the torrents' 3 MiB/s
+            server.read_qbittorrent("rdtclient")
+            self.assertAlmostEqual(server.dl_state["rdtclient"]["totals"]["day"], 30 * 2**20, delta=2**20)
             self.assertEqual([x["title"] for x in server.up_next("rdtclient")], ["Dune (2021)", "Show S01E02"])
             self.assertTrue(server.activity("qBittorrent").startswith("Downloading Dune (2021)"))
         finally:

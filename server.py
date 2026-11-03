@@ -23,6 +23,7 @@ import os
 import queue
 import re
 import secrets
+import shutil
 import signal
 import socket
 import ssl
@@ -36,6 +37,7 @@ from collections import deque
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import history as historymod
 import live as livemod
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -72,7 +74,33 @@ TITLE = CONFIG.get("title") or "Media Server Dashboard"
 AUTH = CONFIG.get("auth") or {}
 SETUP_DONE = bool(AUTH.get("user") and AUTH.get("hash"))
 # Requests from these addresses are a reverse proxy (Caddy in the LXC): the real client is in X-Forwarded-For.
-TRUSTED_PROXIES = set(CONFIG.get("trusted_proxies") or []) | {p.strip() for p in os.environ.get("MSD_TRUSTED_PROXIES", "").split(",") if p.strip()}
+
+
+class Networks:
+    """Addresses and ranges ("172.18.0.1", "172.16.0.0/12", "fd00::/8"); `ip in Networks(...)` checks against all of them.
+    Docker gives a network a new gateway when it is created again, so a range keeps working where an address wouldn't."""
+
+    def __init__(self, entries):
+        self.nets = []
+        for e in entries:
+            try:
+                self.nets.append(ipaddress.ip_network(str(e).strip(), strict=False))
+            except ValueError:
+                print(f"trusted proxies: ignoring {str(e)[:60]!r}, not an address or range", flush=True)
+
+    def __contains__(self, ip):
+        try:
+            a = ipaddress.ip_address(ip)
+        except ValueError:
+            return False
+        a = getattr(a, "ipv4_mapped", None) or a  # ::ffff:172.18.0.1 on a dual-stack socket
+        return any(a.version == n.version and a in n for n in self.nets)
+
+    def __bool__(self):
+        return bool(self.nets)
+
+
+TRUSTED_PROXIES = Networks(list(CONFIG.get("trusted_proxies") or []) + [p for p in os.environ.get("MSD_TRUSTED_PROXIES", "").split(",") if p.strip()])
 INTERNET_CHECK = CONFIG.get("internet_check") or "1.1.1.1:443"
 # Behind the user's own reverse proxy (Nginx Proxy Manager, Traefik …) in front of the LXC's Caddy:
 # Caddy then only serves HTTP and hands on what that proxy said about the visitor (see caddy_site).
@@ -85,6 +113,8 @@ GAME = CONFIG.get("game") or {}
 WEBHOOK_TOKEN = CONFIG.get("webhook_token") or ""
 settings_updates = lambda: CONFIG.get("updates") or {}
 LIVE = livemod.Live(DATA, enabled=GAME.get("enabled", True))
+STATS = historymod.Recorder(os.path.join(DATA, "stats.json"))  # the long-term numbers for /stats
+STARTED = time.time()
 # The root-owned update service (scripts/install-in-container.sh): its settings, and where it takes requests.
 UPDATER_CONF = os.environ.get("MSD_UPDATER_CONF") or "/etc/media-server-dashboard/updater.json"
 UPDATE_DIR = os.path.join(DATA, "updater")
@@ -148,6 +178,15 @@ BY_KIND = {a["key"]: a for a in APPS if a["key"] in BUILTIN}  # the built-in app
 DOWNLOADERS = [BY_KIND[k] for k in DL_KEYS if k in BY_KIND]
 DL_NAMES = {a["name"] for a in DOWNLOADERS}
 
+PAGES = {"/": "index.html", "/office": "office.html", "/stats": "stats.html"}
+# Served without a sign-in: browsers fetch a web app's manifest and icons without the login cookie.
+STATIC = {"/kiosk.js": ("kiosk.js", "text/javascript; charset=utf-8"), "/icon-180.png": ("icons/icon-180.png", "image/png"),
+          "/icon-192.png": ("icons/icon-192.png", "image/png"), "/icon-512.png": ("icons/icon-512.png", "image/png"),
+          "/icon-maskable-512.png": ("icons/icon-maskable-512.png", "image/png")}
+MANIFEST = {"name": "Media Server Dashboard", "short_name": "Dashboard", "start_url": "/?app", "scope": "/", "display": "fullscreen",
+            "display_override": ["fullscreen", "standalone"], "background_color": "#0a0e1a", "theme_color": "#0a0e1a", "orientation": "any",
+            "icons": [{"src": "/icon-192.png", "sizes": "192x192", "type": "image/png"}, {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png"},
+                      {"src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}]}
 VENDOR = {"/vendor/three.module.min.js": "three.module.min.js", "/vendor/OrbitControls.js": "OrbitControls.js", "/vendor/RoundedBoxGeometry.js": "RoundedBoxGeometry.js"}  # the 3D office's library, served as-is
 POSTER_HOSTS = ("https://image.tmdb.org/", "https://artworks.thetvdb.com/")
 poster_cache = {}
@@ -312,6 +351,113 @@ def read_host():
     history["sab"].append(state["sab"].get("speed", 0))
 
 
+# ---------- without Proxmox (Docker, Synology, by hand): the machine itself, from /proc ----------
+# In a container /proc/stat, /proc/meminfo, /proc/loadavg and /proc/diskstats describe the whole host (unless
+# lxcfs narrows them to the container, as in an LXC); /proc/net/dev is the container's own network.
+local_cpu = {}
+DISK_RE = re.compile(r"^(sd[a-z]+|hd[a-z]+|vd[a-z]+|xvd[a-z]+|nvme\d+n\d+|mmcblk\d+|md\d+|sata\d+|synoboot)$")
+
+
+def read_local(proc="/proc"):
+    now = time.time()
+    with open(f"{proc}/stat", encoding="ascii") as f:
+        cpu = [int(x) for x in f.readline().split()[1:]]
+    busy, total = sum(cpu) - cpu[3] - (cpu[4] if len(cpu) > 4 else 0), sum(cpu)
+    wait = cpu[4] if len(cpu) > 4 else 0
+    last = local_cpu.get("last")
+    local_cpu["last"] = (busy, total, wait)
+    if last and total > last[1]:
+        dt = total - last[1]
+        use, io = (busy - last[0]) / dt * 100, (wait - last[2]) / dt * 100
+    else:
+        use = io = 0.0
+    mem = {}
+    with open(f"{proc}/meminfo", encoding="ascii") as f:
+        for line in f:
+            k, _, v = line.partition(":")
+            mem[k] = int(v.split()[0]) * 1024 if v.split() else 0
+    with open(f"{proc}/loadavg", encoding="ascii") as f:
+        load = [float(x) for x in f.read().split()[:3]]
+    with open(f"{proc}/uptime", encoding="ascii") as f:
+        up = float(f.read().split()[0])
+    rx = tx = 0
+    with open(f"{proc}/net/dev", encoding="ascii") as f:
+        for line in f.readlines()[2:]:
+            name, _, rest = line.partition(":")
+            v = rest.split()
+            if name.strip() != "lo" and len(v) >= 9:
+                rx += int(v[0]); tx += int(v[8])
+    io_bytes = 0
+    try:
+        with open(f"{proc}/diskstats", encoding="ascii") as f:
+            for line in f:
+                v = line.split()
+                if len(v) >= 10 and DISK_RE.match(v[2]):
+                    io_bytes += (int(v[5]) + int(v[9])) * 512
+    except OSError:
+        pass
+    if "model" not in local_cpu:
+        local_cpu["model"] = ""
+        try:
+            with open(f"{proc}/cpuinfo", encoding="utf-8", errors="replace") as f:
+                local_cpu["model"] = next((l.split(":", 1)[1].strip() for l in f if l.lower().startswith(("model name", "hardware", "processor\t:")) and ":" in l and not l.split(":", 1)[1].strip().isdigit()), "")
+        except OSError:
+            pass
+    r_rx, r_tx, r_io = counters["rx"].update(rx, now), counters["tx"].update(tx, now), counters["disk"].update(io_bytes, now)
+    total_mem = mem.get("MemTotal") or 1
+    used = total_mem - mem.get("MemAvailable", mem.get("MemFree", 0))
+    state["system"].update(
+        source="local", host=os.environ.get("MSD_HOST_NAME") or socket.gethostname(), cpu_name=local_cpu["model"], cores=os.cpu_count() or 1,
+        pve="", kernel=os.uname().release, booted=int((now - up) * 1000), speed_limit=100,
+        cpu={"user": round(use - io, 1), "system": round(io, 1), "idle": round(100 - use, 1)}, load=load,
+        memory={"total": total_mem, "used": used, "free_level": round(mem.get("MemAvailable", 0) / total_mem * 100),
+                "swap_total": mem.get("SwapTotal", 0), "swap_used": mem.get("SwapTotal", 0) - mem.get("SwapFree", 0)},
+    )
+    history["t"].append(int(now * 1000))
+    history["cpu"].append(round(use))
+    history["mem"].append(round(used / total_mem * 100, 1))
+    history["rx"].append(round(r_rx))
+    history["tx"].append(round(r_tx))
+    history["disk"].append(round(r_io))
+    history["sab"].append(state["sab"].get("speed", 0))
+
+
+LOCAL_FS = {"ext2", "ext3", "ext4", "xfs", "btrfs", "zfs", "f2fs", "nfs", "nfs4", "cifs", "smb3", "fuse.mergerfs", "fuse.shfs", "exfat", "vfat", "ntfs3", "fuseblk"}
+
+
+def read_local_disks(proc="/proc"):
+    """The drives mounted here (in Docker: /data and the media folders), each one once."""
+    disks, seen = [], set()
+    with open(f"{proc}/mounts", encoding="utf-8", errors="replace") as f:
+        mounts = [l.split()[:3] for l in f if len(l.split()) >= 3]
+    for dev, path, fs in mounts:
+        path = path.replace("\\040", " ")
+        if fs not in LOCAL_FS or path.startswith(("/etc/", "/proc", "/sys", "/dev")) or os.path.isfile(path):
+            continue
+        try:
+            st, du = os.stat(path), shutil.disk_usage(path)
+        except OSError:
+            continue
+        if st.st_dev in seen or not du.total:
+            continue
+        seen.add(st.st_dev)
+        disks.append({"name": path, "total": du.total, "free": du.free})
+    if STORAGES:
+        disks = [d for d in disks if d["name"] in STORAGES] or disks
+    state["disks"] = sorted(disks, key=lambda d: -d["total"])[:12]
+
+
+def local_loop():
+    while True:
+        started = time.time()
+        try:
+            read_local()
+        except (OSError, ValueError, IndexError) as e:
+            print(f"local stats: {e}", flush=True)
+            return  # not a Linux /proc: no host numbers then
+        time.sleep(max(0.1, TICK - (time.time() - started)))
+
+
 def system_loop():
     while True:
         started = time.time()
@@ -400,7 +546,11 @@ def home_payload():
 # ---------- apps ----------
 def read_services():
     """Does each app accept connections on its port?"""
-    state["services"] = [{"name": a["name"], "key": a["key"], "url": a["web_url"], "up": reachable(a["host"], a["port"]) is not None} for a in APPS]
+    out = []
+    for a in APPS:
+        ms = reachable(a["host"], a["port"])
+        out.append({"name": a["name"], "key": a["key"], "url": a["web_url"], "up": ms is not None, "ms": None if ms is None else round(ms, 1)})
+    state["services"] = out
 
 
 def poster(item):
@@ -434,6 +584,7 @@ def read_arr(kind):
                 "history": get(f"history?pageSize=8&eventType=3&sortKey=date&sortDirection=descending&{include}"),
                 "calendar": get(f"calendar?start={start.strftime(fmt)}&end={end.strftime(fmt)}" + ("" if movies else "&includeSeries=true")),
             }
+            slow["nerd"] = library_details(slow["items"], movies, slow["roots"])
             arr_slow[kind] = slow
     except FAIL:
         state[kind] = {"ok": False}
@@ -488,8 +639,45 @@ def read_arr(kind):
         "ok": True, "version": slow["status"].get("version"), "library": library, "missing": slow["missing"].get("totalRecords", 0),
         "recent": recent, "upcoming": upcoming,
         "health": [{"level": h.get("type"), "message": h.get("message")} for h in slow["health"]],
-        "roots": [{"path": r.get("path"), "ok": r.get("accessible", True)} for r in slow["roots"]],
+        "roots": [{"path": r.get("path"), "ok": r.get("accessible", True)} for r in slow["roots"]], "nerd": slow.get("nerd"),
     }
+
+
+def library_details(items, movies, roots):
+    """The library taken apart for the statistics page: qualities, codecs, decades, genres, the biggest titles."""
+    from collections import Counter
+    have = [m for m in items if (m.get("hasFile") if movies else (m.get("statistics") or {}).get("episodeFileCount"))]
+    size = lambda m: (m.get("sizeOnDisk") if movies else (m.get("statistics") or {}).get("sizeOnDisk")) or 0
+    top = lambda c, n=12: [[k, v] for k, v in c.most_common(n) if k]
+    out = {
+        "decades": sorted([[d, n] for d, n in Counter(f"{(m.get('year') or 0) // 10 * 10}s" for m in items if m.get("year")).items()]),
+        "genres": top(Counter(g for m in items for g in m.get("genres") or [])),
+        "largest": [{"title": m.get("title"), "year": m.get("year"), "size": size(m)} for m in sorted(have, key=size, reverse=True)[:8]],
+        "monitored": sum(1 for m in items if m.get("monitored")), "total": len(items), "have": len(have),
+        "avg_size": round(sum(size(m) for m in have) / len(have)) if have else 0,
+        "added": sorted([[k, n] for k, n in Counter((m.get("added") or "")[:7] for m in items if m.get("added", "")[:4].isdigit() and m["added"][:4] >= "2000").items()])[-24:],
+        "roots": [{"path": r.get("path"), "free": r.get("freeSpace"), "total": r.get("totalSpace")} for r in roots],
+    }
+    if movies:
+        files = [m.get("movieFile") or {} for m in have]
+        info = [f.get("mediaInfo") or {} for f in files]
+        q = [((f.get("quality") or {}).get("quality") or {}) for f in files]
+        out.update(
+            quality=top(Counter(x.get("name") for x in q)), resolution=top(Counter(f"{x['resolution']}p" for x in q if x.get("resolution"))),
+            video=top(Counter(i.get("videoCodec") for i in info)), audio=top(Counter(i.get("audioCodec") for i in info)),
+            hdr=top(Counter(i.get("videoDynamicRangeType") or "SDR" for i in info if i)), channels=top(Counter(str(i.get("audioChannels")) for i in info if i.get("audioChannels"))),
+            studios=top(Counter(m.get("studio") for m in items), 8), certification=top(Counter(m.get("certification") for m in items), 8),
+            runtime=sum(m.get("runtime") or 0 for m in have),  # minutes
+        )
+    else:
+        st = lambda m, k: (m.get("statistics") or {}).get(k) or 0
+        out.update(
+            status=top(Counter(m.get("status") for m in items)), networks=top(Counter(m.get("network") for m in items), 8),
+            types=top(Counter(m.get("seriesType") for m in items)), seasons=sum(st(m, "seasonCount") for m in items),
+            runtime=sum((m.get("runtime") or 0) * st(m, "episodeFileCount") for m in items),
+            complete=sum(1 for m in items if st(m, "episodeCount") and st(m, "episodeFileCount") >= st(m, "episodeCount")),
+        )
+    return out
 
 
 # ---------- posters open the title in Plex or Jellyfin (or in Radarr/Sonarr) ----------
@@ -592,6 +780,15 @@ def read_prowlarr():
         }
     except FAIL:
         state["prowlarr"] = {"ok": False}
+        return
+    try:  # per indexer: queries, grabs, failures, response time (for the statistics page)
+        st = app_get(a, "indexerstats", timeout=10).get("indexers") or []
+        state["prowlarr"]["stats"] = sorted(({
+            "name": i.get("indexerName"), "queries": i.get("numberOfQueries", 0), "grabs": i.get("numberOfGrabs", 0),
+            "failed": i.get("numberOfFailedQueries", 0) + i.get("numberOfFailedGrabs", 0), "ms": i.get("averageResponseTime", 0),
+        } for i in st if isinstance(i, dict)), key=lambda x: -x["queries"])[:20]
+    except FAIL:
+        pass
 
 
 def read_bazarr():
@@ -900,6 +1097,7 @@ def read_nzbget():
 # ---------- qBittorrent Web API (rdtclient too): sign in, then a session cookie ----------
 qb_cookies = {}  # app key -> the cookie its login gave
 qb_alltime = {}  # app key -> {"at": time, "bytes": all-time downloaded, or None}
+qb_session = {}  # app key -> what qBittorrent had downloaded in its session at the last look
 QB_STATES = {"downloading": "Downloading", "forcedDL": "Downloading", "metaDL": "Getting metadata", "forcedMetaDL": "Getting metadata",
              "stalledDL": "Stalled", "queuedDL": "Queued", "pausedDL": "Paused", "stoppedDL": "Paused", "checkingDL": "Checking",
              "allocating": "Allocating", "moving": "Moving", "checkingResumeData": "Checking"}
@@ -977,6 +1175,18 @@ def read_qbittorrent(key):
             got = None
         alltime = qb_alltime[key] = {"at": time.time(), "bytes": got}
     num = lambda v: float(v or 0)
+    # What came in since the last look, for today's numbers: qBittorrent counts its session's bytes; without
+    # that (rdtclient) the torrents' speeds over the time since.
+    now, last = time.time(), qb_session.get(key)
+    if "dl_info_data" in info:
+        got = num(info["dl_info_data"])
+        if last is not None:
+            STATS.add_bytes(key, got - last["bytes"] if got >= last["bytes"] else got)
+        qb_session[key] = {"bytes": got, "at": now}
+    else:
+        if last is not None:
+            STATS.add_bytes(key, sum(num(t.get("dlspeed")) for t in torrents if isinstance(t, dict)) * min(now - last["at"], 60))
+        qb_session[key] = {"bytes": 0, "at": now}
     active = [t for t in torrents if isinstance(t, dict) and t.get("hash") and num(t.get("progress")) < 1
               and t.get("state") not in ("error", "missingFiles")]
     # qBittorrent's queue order where it has one (priority 1, 2, ...), otherwise the order they were added.
@@ -1011,8 +1221,9 @@ def read_qbittorrent(key):
         "paused": bool(active) and all(t.get("state") in ("pausedDL", "stoppedDL") for t in active),
         "speed": speed, "left": left, "eta": clock(left / speed) if speed and left else "",
         "queueTotal": len(active), "queue": queue[:60], "failed": errored,
-        # qBittorrent keeps no per-day numbers: today, this week and this month stay empty.
-        "totals": {"day": None, "week": None, "month": None, "total": alltime["bytes"]},
+        # qBittorrent keeps no per-day numbers: the dashboard counts them itself (from when it first saw the client).
+        "totals": {"day": STATS.downloaded(key, 1), "week": STATS.downloaded(key, 7), "month": STATS.downloaded(key, 30),
+                   "total": alltime["bytes"] if alltime["bytes"] is not None else STATS.downloaded(key, historymod.KEEP_DAYS)},
     })
 
 
@@ -1029,7 +1240,8 @@ def alerts():
     out = []
     add = lambda level, source, msg: out.append({"level": level, "source": source, "message": msg})
     if not PVE:
-        add("warning", "Proxmox", "Not set up yet, so there are no host stats. Open the settings to add it.")
+        if state["system"].get("source") != "local":  # in Docker the machine's own numbers stand in
+            add("warning", "Proxmox", "Not set up yet, so there are no host stats. Open the settings to add it.")
     elif state["proxmox"].get("ok") is False:
         add("error", "Proxmox", f"API not reachable ({state['proxmox'].get('error', 'error')})")
     guests = {str(g["id"]): g for g in state["proxmox"].get("guests", [])}
@@ -1117,6 +1329,98 @@ def watch_alerts():
             if key not in now:
                 LIVE.emit(a["source"], "recover", "is back" if a["message"] in ("Not reachable",) else f"solved: {a['message']}", "success")
     alert_seen = now
+
+
+# ---------- the statistics page ----------
+stats_saved = [time.time()]
+dl_seen_at = {}  # download client key -> when its speed was last counted (SABnzbd and NZBGet: bytes for the charts)
+
+
+def record_stats():
+    """Every ten seconds: the numbers worth keeping into the long-term history, and the feed's new events into the days."""
+    now = time.time()
+    v = {}
+    if (state["proxmox"].get("ok") or state["system"].get("source") == "local") and history_has_samples():
+        v.update(cpu=history["cpu"][-1], mem=history["mem"][-1], rx=history["rx"][-1], tx=history["tx"][-1], disk=history["disk"][-1],
+                 load=(state["system"].get("load") or [None])[0],
+                 guests=sum(1 for g in state["proxmox"].get("guests", []) if g.get("status") == "running"))
+    sab = state["sab"]
+    if sab.get("ok"):
+        v.update(dl=sab.get("speed", 0), queue=sab.get("queueTotal", 0))
+    for a in DOWNLOADERS:
+        s = dl_state.get(a["key"]) or {}
+        if s.get("ok"):
+            v["dl:" + a["name"]] = s.get("speed", 0)
+            if a["kind"] != "qbittorrent":  # qBittorrent's bytes are counted exactly in read_qbittorrent
+                if a["key"] in dl_seen_at:
+                    STATS.add_bytes(a["key"], s.get("speed", 0) * min(now - dl_seen_at[a["key"]], 60))
+                dl_seen_at[a["key"]] = now
+    for svc in state["services"]:
+        if svc.get("ms") is not None:
+            v["ms:" + svc["name"]] = svc["ms"]
+    v.update(alerts=len(alerts()), viewers=len(LIVE.subscribers))
+    STATS.add(v, now)
+    STATS.count_events(LIVE.recent(500))
+    if now - stats_saved[0] > 300:
+        stats_saved[0] = now
+        try:
+            STATS.save()
+        except OSError as e:
+            print(f"stats: {e}", flush=True)
+
+
+def history_has_samples():
+    return bool(history["cpu"])
+
+
+STATS_RANGES = {"1h": ("minute", 3600), "24h": ("minute", 86400), "7d": ("hour", 7 * 86400), "30d": ("hour", 30 * 86400),
+                "90d": ("hour", 90 * 86400), "1y": ("day", 365 * 86400), "2y": ("day", 730 * 86400)}
+
+
+def process_info():
+    """The dashboard's own process, for the curious."""
+    info = {"pid": os.getpid(), "python": sys.version.split()[0], "threads": threading.active_count(), "started": int(STARTED * 1000)}
+    try:
+        import resource
+        info["max_rss"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
+        info["cpu_seconds"] = round(sum(resource.getrusage(resource.RUSAGE_SELF)[:2]), 1)
+    except (ImportError, OSError):
+        pass
+    try:
+        with open("/proc/self/status", encoding="ascii") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    info["rss"] = int(line.split()[1]) * 1024
+    except (OSError, ValueError):
+        pass
+    try:
+        info["data_bytes"] = sum(os.path.getsize(os.path.join(DATA, n)) for n in ("events.json", "game.json", "stats.json", "config.json") if os.path.exists(os.path.join(DATA, n)))
+    except OSError:
+        pass
+    return info
+
+
+def stats_payload(rng):
+    with sessions_lock:
+        signed_in = len(sessions)
+    proc = {**process_info(), "sessions": signed_in, "viewers": len(LIVE.subscribers), "apps": len(APPS)}
+    if DEMO:
+        return {**demo.stats(rng, STATS_RANGES), "game": LIVE.summary(), "process": proc}
+    tier, span = STATS_RANGES.get(rng, STATS_RANGES["24h"])
+    now = time.time()
+    days = 30 if span <= 30 * 86400 else min(365, int(span // 86400))
+    names = {a["key"]: a["name"] for a in DOWNLOADERS}
+    return {
+        "range": rng if rng in STATS_RANGES else "24h", "now": int(now * 1000), "title": TITLE, "version": VERSION,
+        "series": STATS.series(tier, since=now - span), "days": STATS.day_counts(days), "since": int(STATS.since * 1000),
+        "clients": names, "live": {k: list(v) for k, v in history.items()},
+        "system": state["system"], "proxmox": state["proxmox"], "disks": state["disks"], "network": state["network"],
+        "services": state["services"], "downloads": {k: v for k, v in dl_state.items()}, "sab": state["sab"],
+        "library": {k: {x: state[k].get(x) for x in ("version", "library", "missing", "nerd")} for k in ("radarr", "sonarr") if state[k].get("ok")},
+        "prowlarr": {x: state["prowlarr"].get(x) for x in ("version", "indexers", "stats") if state["prowlarr"].get("ok")},
+        "game": LIVE.summary(), "events_total": STATS.last_event,
+        "process": proc,
+    }
 
 
 def payload():
@@ -1650,6 +1954,10 @@ def goodbye(reason):
         time.sleep(0.2)
     finally:
         LIVE.flush()
+        try:
+            STATS.save(force=True)
+        except OSError:
+            pass
 
 
 def on_sigterm(signum, frame):
@@ -1809,6 +2117,12 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path == "/healthz":
             return self.json(200, {"ok": True, "version": VERSION, "boot": BOOT})
+        if path in STATIC:
+            name, ctype = STATIC[path]
+            with open(os.path.join(HERE, name), "rb") as f:
+                return self.reply(200, f.read(), ctype)
+        if path == "/manifest.webmanifest":
+            return self.reply(200, json.dumps({**MANIFEST, "name": TITLE or MANIFEST["name"]}).encode(), "application/manifest+json")
         if path == "/setup":
             return self.page("setup.html") if self.authed() or not SETUP_DONE else self.redirect("/login")
         if path == "/setup/config":
@@ -1836,12 +2150,17 @@ class Handler(BaseHTTPRequestHandler):
             if target and (not re.match(r"^https?://", target) or re.search(r"[\x00-\x20\x7f]", target)):
                 target = None
             return self.redirect(target) if target else self.reply(404, b"Not found in Plex, Jellyfin, Radarr or Sonarr", "text/plain")
+        if path == "/api/stats":
+            if not self.authed():
+                return self.json(401, {"error": "sign-in needed"})
+            rng = (urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("range") or ["24h"])[0]
+            return self.reply(200, json.dumps(stats_payload(rng)).encode(), "application/json")
         if path == "/api/update":
             return self.json(200, update_info()) if self.authed() else self.json(401, {"error": "sign-in needed"})
         if DEMO and path.startswith("/demo-poster/"):
             return self.reply(200, demo.poster(path), "image/svg+xml")
-        if path in ("/", "/office"):
-            return self.page("index.html" if path == "/" else "office.html") if self.authed() else self.redirect("/login")
+        if path in PAGES:
+            return self.page(PAGES[path]) if self.authed() else self.redirect("/login")
         if path == "/poster":
             return self.poster() if self.authed() else self.reply(401, b"Login needed", "text/plain")
         if path in VENDOR:
@@ -1914,7 +2233,13 @@ class Handler(BaseHTTPRequestHandler):
             return self.json(429, {"ok": False, "error": "too many webhooks per minute"})
         raw = self.body(262144)
         try:
-            body = json.loads(raw or b"{}")
+            if self.headers.get("Content-Type", "").startswith("application/x-www-form-urlencoded"):
+                # curl --data-urlencode from a download client's "run on finish" (qBittorrent: torrent=%N)
+                body = dict(urllib.parse.parse_qsl(raw.decode("utf-8", "replace"), keep_blank_values=True))
+                if body.get("torrent"):
+                    body = {"kind": "download", "level": "success", "text": "finished downloading " + tidy(body["torrent"][:300])}
+            else:
+                body = json.loads(raw or b"{}")
             source_hint = path_source or urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("source", [""])[0]
             source, kind, text, level = livemod.parse_hook(body, source_hint)
         except ValueError as e:
@@ -2066,12 +2391,16 @@ if __name__ == "__main__":
     else:
         threading.Thread(target=update_loop, daemon=True).start()
         looped(10, watch_alerts)
+        looped(10, record_stats)
         looped(30, read_network)
         if HOME.get("enabled") and HOME.get("tiles"):
             looped(10, read_home)
         if PVE:
             threading.Thread(target=system_loop, daemon=True).start()
             looped(30, read_disks)
+        elif os.path.exists("/proc/stat"):
+            threading.Thread(target=local_loop, daemon=True).start()
+            looped(30, read_local_disks)
         if APPS:
             print("watching: " + ", ".join(a["name"] for a in APPS), flush=True)
             looped(5, read_services)

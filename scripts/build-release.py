@@ -50,9 +50,9 @@ def main():
     name = f"media-server-dashboard-{a.version}.tar.gz"
     path = os.path.join(a.out, name)
     prefix = f"media-server-dashboard-{a.version}/"
-    # Only what runs on the server; CI, tests and the Proxmox host script stay in the repository.
+    # Only what runs on the server; CI, tests and the README screenshots stay in the repository.
     paths = [p for p in subprocess.run(["git", "-C", ROOT, "ls-tree", "-r", "--name-only", a.ref], capture_output=True, text=True, check=True).stdout.split()
-             if not p.startswith((".github/", "tests/"))]
+             if not p.startswith((".github/", "tests/", "docs/screenshots/"))]
     with open(path, "wb") as out:
         subprocess.run(["git", "-C", ROOT, "archive", "--format=tar.gz", f"--prefix={prefix}", a.ref, *paths], stdout=out, check=True)
     data = open(path, "rb").read()
