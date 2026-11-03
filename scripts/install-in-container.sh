@@ -80,8 +80,6 @@ try:
 except (OSError, ValueError):
     c = {}
 c.setdefault("repo", repo)
-if c["repo"] == "lcsfls/media-server-dashboard-extended":  # the project moved; GitHub forwards, the updater follows too
-    c["repo"] = repo
 c.setdefault("channel", "stable")
 c.update({"workflow": ".github/workflows/release.yml", "app_root": app_root, "data_dir": data, "work_dir": work,
           "status_file": f"{work}/public/status.json", "service": "media-server-dashboard",
