@@ -108,6 +108,7 @@ nav button.dirty::after { content: ' •'; color: #9cc4ff; }
       <label>Password <span id="pwHint"></span><input id="pw" type="password" autocomplete="new-password"></label>
       <label>Repeat the password<input id="pw2" type="password" autocomplete="new-password"></label>
     </div>
+    <label id="curPwBox" hidden>Current password <span class="hint">(needed to set a new one)</span><input id="curPw" type="password" autocomplete="current-password"></label>
     <div class="hint">At least 10 characters.</div>
   </section>
 
@@ -305,6 +306,7 @@ function validate(id) {
     if (!cfg.setup_done || $('pw').value) {
       if ($('pw').value.length < 10) return 'The password needs at least 10 characters.';
       if ($('pw').value !== $('pw2').value) return 'The passwords don\'t match.';
+      if (cfg.setup_done && !$('curPw').value) return 'Enter your current password to set a new one.';
     }
   }
   if (id === 's-address' && (addrMode() === 'domain' || (addrMode() === 'proxy' && $('domain').value.trim())) && !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/i.test($('domain').value.trim())) return 'Please enter a valid domain.';
@@ -321,6 +323,9 @@ function validate(id) {
   }
   return '';
 }
+
+// The current password only matters (and only shows) when a new one is typed in the settings.
+$('pw').addEventListener('input', () => { $('curPwBox').hidden = !(cfg && cfg.setup_done && $('pw').value); });
 
 // ---------- token ----------
 $('tokenGo').onclick = async () => {
@@ -677,7 +682,7 @@ function collect() {
   });
   const pveOn = $('pveOn').checked;
   return {
-    title: $('title').value.trim(), user: $('user').value.trim(), password: $('pw').value,
+    title: $('title').value.trim(), user: $('user').value.trim(), password: $('pw').value, current_password: $('curPw').value,
     domain: addrMode() === 'ip' ? '' : $('domain').value.trim(), behind_proxy: addrMode() === 'proxy', tls: document.querySelector('input[name=tls]:checked').value, ip_access: $('ipAccess').checked,
     proxmox: pveOn ? pveInput() : {},
     // Without a successful connection test the lists aren't shown; keep what was saved instead of clearing it.
@@ -710,7 +715,7 @@ function renderSummary() {
 const FIELD_TABS = { title: 's-user', user: 's-user', password: 's-user', domain: 's-address', behind_proxy: 's-address', tls: 's-address', ip_access: 's-address',
   proxmox: 's-pve', storages: 's-pve', watch_guests: 's-pve', apps: 's-apps', custom_apps: 's-apps', home: 's-home', game: 's-live', new_webhook_token: 's-live' };
 let saved = null;
-function snapshot() { const d = collect(); return Object.fromEntries(Object.entries(d).map(([k, v]) => [k, JSON.stringify(v)])); }
+function snapshot() { const d = collect(); delete d.current_password; return Object.fromEntries(Object.entries(d).map(([k, v]) => [k, JSON.stringify(v)])); }
 function changedTabs() {
   if (!saved) return new Set();
   const now = snapshot();

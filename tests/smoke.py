@@ -100,6 +100,16 @@ def main():
         check(s == 303 and loc == "/setup" and body == b"", "HEAD works like GET without a body")
         check(c.req("HEAD", "/healthz")[0] == 200, "HEAD /healthz for uptime monitors")
         check(c.req("GET", "/setup/config")[0] == 401, "settings need the setup token")
+        # a negative Content-Length is refused at once instead of reading until the connection ends
+        raw = socket.create_connection(("127.0.0.1", port), timeout=5)
+        raw.sendall(b"POST /login HTTP/1.1\r\nHost: x\r\nContent-Length: -1\r\n\r\n" + b"A" * 65536)
+        check(b" 400 " in raw.recv(200), "negative Content-Length gets 400")
+        raw.close()
+        check(c.req("GET", "/setup")[0] == 200, "the setup page is served")
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        conn.request("GET", "/setup")
+        csp = conn.getresponse().getheader("Content-Security-Policy") or ""
+        check("frame-ancestors 'none'" in csp and "connect-src 'self'" in csp, "pages carry a Content-Security-Policy")
         token = open(os.path.join(data, "setup-token.txt")).read().strip()
         check(c.req("POST", "/setup/save", "user=a", ctype="application/x-www-form-urlencoded", headers={"X-Setup-Token": token})[0] == 415, "form posts are refused")
         s, _, d = c.req("POST", "/setup/save", {"user": "admin", "password": "short"}, headers={"X-Setup-Token": token})

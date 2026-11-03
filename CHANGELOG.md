@@ -5,6 +5,15 @@ becomes its GitHub release text, so write it for the people who run the dashboar
 
 ## Unreleased
 
+Security (from an audit):
+- A negative `Content-Length` made the server read and buffer everything until the connection ended, without logging in (memory exhaustion); it is now refused with 400.
+- Connections that send nothing more are closed after 20 seconds, and at most 200 requests are handled at a time, instead of one thread each, kept forever.
+- Pages carry a Content-Security-Policy (only this server's own scripts, connections and frames; posters from TMDB/TheTVDB).
+- Setting a new password needs the current one, so an unlocked browser alone can't take the account.
+- Demo mode, which has no login, no longer makes the connection tests' network requests for visitors.
+- New passwords are hashed with 600,000 PBKDF2 rounds (OWASP 2023); existing ones keep working.
+- The list of failed logins is pruned instead of growing with every address.
+
 ## 0.3.3 - 2026-11-03
 
 - The project moved to github.com/freelancer381/media-server-dashboard-extended; images are now `ghcr.io/freelancer381/media-server-dashboard-extended`.

@@ -43,6 +43,19 @@ class BuildConfig(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, msg):
                     server.build_config(bad)
 
+    def test_new_password_needs_the_current_one(self):
+        server.CONFIG.clear()
+        server.CONFIG.update({"auth": {"user": "luis", **server.hash_password("old-password-1", iterations=1000)}})
+        try:
+            with self.assertRaisesRegex(ValueError, "current one"):
+                server.build_config(wizard(password="new-password-1"))
+            with self.assertRaisesRegex(ValueError, "current one"):
+                server.build_config(wizard(password="new-password-1", current_password="wrong"))
+            c = server.build_config(wizard(password="new-password-1", current_password="old-password-1"))
+            self.assertEqual(server.hash_password("new-password-1", c["auth"]["salt"], c["auth"]["iterations"])["hash"], c["auth"]["hash"])
+        finally:
+            server.CONFIG.clear()
+
     def test_secrets_are_kept_when_left_empty(self):
         server.CONFIG.clear()
         server.CONFIG.update({"auth": {"user": "luis", "salt": "00", "hash": "ab", "iterations": 1}, "webhook_token": "keep-me",

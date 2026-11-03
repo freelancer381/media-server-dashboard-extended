@@ -1107,7 +1107,7 @@ def save_settings(**changes):
 # ---------- accounts ----------
 failures = {}  # ip -> [attempts, locked until]
 hook_times = deque()  # when the last webhooks came in, for a simple limit per minute
-ITERATIONS = 300_000
+ITERATIONS = 600_000  # OWASP 2023 for PBKDF2-SHA256; hashes made with fewer keep working
 
 
 def private_file(path, make):
@@ -1180,6 +1180,8 @@ def public_config():
 def wizard_test(req):
     """Try a connection with what the wizard has filled in so far. Returns what was found, or why it failed."""
     what = req.get("what")
+    if DEMO and what != "hook":
+        return {"ok": False, "error": "connection tests are off in demo mode"}  # no login in the demo: no requests for visitors
     try:
         if what == "proxmox":
             p = dict(req.get("proxmox") or {})
@@ -1256,6 +1258,11 @@ def build_config(req):
     if not re.fullmatch(r"[A-Za-z0-9._@-]{2,64}", user):
         raise ValueError("User name: 2–64 characters, only letters, digits and . _ @ -")
     pw = req.get("password") or ""
+    if pw and old.get("auth", {}).get("hash"):
+        a = old["auth"]
+        cur = hash_password(req.get("current_password") or "", a["salt"], a.get("iterations", ITERATIONS))["hash"]
+        if not hmac.compare_digest(cur, a["hash"]):
+            raise ValueError("To set a new password, enter the current one")
     if pw:
         if len(pw) < 10:
             raise ValueError("Password: at least 10 characters")
@@ -1423,7 +1430,41 @@ def dashboard_url(c, lan):
 
 
 # ---------- web server ----------
+class BadRequest(Exception):
+    pass
+
+
+class Server(ThreadingHTTPServer):
+    """At most MAX_CONNECTIONS requests at a time; further connections are closed at once instead of each
+    taking a thread (open pages hold one each for the live stream)."""
+    daemon_threads = True
+    MAX_CONNECTIONS = 200
+
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        self.slots = threading.BoundedSemaphore(self.MAX_CONNECTIONS)
+
+    def process_request(self, request, client_address):
+        if not self.slots.acquire(blocking=False):
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except Exception:
+            self.slots.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self.slots.release()
+
+
 class Handler(BaseHTTPRequestHandler):
+    # A request has 20 s to arrive; a connection that sends nothing more is closed instead of holding a
+    # thread forever. The live stream writes at least every 15 s, so it isn't affected.
+    timeout = 20
     def via_proxy(self, header):
         """What the user's own proxy (in front of Caddy) said, if this came through Caddy from the local network."""
         if not BEHIND_PROXY or self.client_address[0] not in TRUSTED_PROXIES:
@@ -1473,10 +1514,16 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
+    # Scripts and styles are inline in the pages; everything else may only come from here (posters from
+    # TMDB/TheTVDB), and nothing may be sent elsewhere or framed.
+    CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+           "img-src 'self' data: blob: https://image.tmdb.org https://artworks.thetvdb.com; connect-src 'self'; "
+           "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+
     def page(self, name):
         with open(os.path.join(HERE, name), "rb") as f:
             body = f.read().replace(b"{{TITLE}}", html.escape(TITLE).encode()).replace(b"{{VERSION}}", html.escape(VERSION).encode()).replace(b"{{BOOT}}", BOOT.encode())
-            self.reply(200, body, "text/html; charset=utf-8")
+            self.reply(200, body, "text/html; charset=utf-8", csp=True)
 
     def json(self, code, obj):
         self.reply(code, json.dumps(obj).encode(), "application/json")
@@ -1604,10 +1651,21 @@ class Handler(BaseHTTPRequestHandler):
         return self.headers.get("Content-Type", "").startswith("application/json")
 
     def body(self, limit=65536):
-        size = min(int(self.headers.get("Content-Length") or 0), limit)
-        return self.rfile.read(size)
+        try:
+            size = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            size = -1
+        if size < 0:
+            raise BadRequest("invalid Content-Length")
+        return self.rfile.read(min(size, limit))
 
     def do_POST(self):
+        try:
+            return self.post()
+        except BadRequest as e:
+            return self.json(400, {"ok": False, "error": str(e)})
+
+    def post(self):
         path = self.path.split("?")[0]
         if path == "/login":
             return self.login()
@@ -1689,12 +1747,17 @@ class Handler(BaseHTTPRequestHandler):
             secure = "; Secure" if self.https() else ""
             return self.redirect("/office" if HOME.get("enabled") and HOME.get("start") else "/", f"dash_auth={session_token()}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Strict{secure}")
         attempts = 1 if fail[1] else fail[0] + 1  # a finished lockout starts counting again
-        failures[ip] = [attempts, time.time() + LOCKOUT if attempts >= MAX_ATTEMPTS else 0]
+        failures[ip] = [attempts, time.time() + LOCKOUT if attempts >= MAX_ATTEMPTS else 0, time.time()]
+        if len(failures) > 5000:  # forget old entries instead of growing with every address that ever failed
+            for k in [k for k, v in failures.items() if time.time() - v[-1] > 3600 and v[1] < time.time()]:
+                failures.pop(k, None)
         time.sleep(0.8)
         self.redirect("/login?e=1")
 
-    def reply(self, code, body, ctype):
+    def reply(self, code, body, ctype, csp=False):
         self.send_response(code)
+        if csp:
+            self.send_header("Content-Security-Policy", self.CSP)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
@@ -1739,4 +1802,4 @@ if __name__ == "__main__":
             looped(15, read_custom)
             looped(5, read_activity)
     signal.signal(signal.SIGTERM, on_sigterm)
-    ThreadingHTTPServer((BIND, PORT), Handler).serve_forever()
+    Server((BIND, PORT), Handler).serve_forever()
