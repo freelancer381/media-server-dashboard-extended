@@ -39,7 +39,12 @@ button:disabled { opacity: .5; cursor: default; }
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .row.end { justify-content: space-between; }
 .app { border: 1px solid var(--edge); border-radius: 14px; padding: 12px 14px; display: grid; gap: 10px; background: rgba(255, 255, 255, .03); }
-.app .body { display: grid; gap: 10px; }
+/* every block of settings: its parts one below the other with room between them (it was only inside app cards) */
+.body { display: grid; gap: 12px; min-width: 0; }
+.app .body { gap: 10px; }
+label.inline { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+label.inline select { width: auto; min-width: 96px; }
+.auto-row { gap: 10px 18px; }
 .app.off .body { display: none; }
 .status { font-size: 12.5px; min-height: 18px; }
 .status.ok { color: var(--good); }
@@ -225,9 +230,9 @@ nav button.dirty::after { content: ' •'; color: #9cc4ff; }
       <div id="updAvail" class="card" hidden></div>
       <div id="updRun" class="card" hidden><b>Update running</b><ul class="steps" id="updSteps"></ul><pre class="log" id="updLog"></pre></div>
       <div id="updRefused" class="hint" hidden></div>
-      <div class="grid2">
+      <div class="row auto-row">
         <label class="check"><input id="updAuto" type="checkbox"> Install new versions automatically</label>
-        <label>at<select id="updHour"></select></label>
+        <label class="inline">at <select id="updHour"></select></label>
       </div>
       <p class="hint">Only releases signed by the release workflow of <span id="updRepo"></span> are installed (Sigstore). The settings are backed up first; if the new version doesn't start cleanly, the previous one runs again automatically.</p>
     </div>
