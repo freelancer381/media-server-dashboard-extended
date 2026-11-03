@@ -116,15 +116,17 @@ nav button.dirty::after { content: ' •'; color: #9cc4ff; }
     <p>How should the dashboard be reached?</p>
     <div class="radio">
       <label class="check"><input type="radio" name="addr" value="ip"><span>By IP address only<small id="ipHint">http://&lt;container IP&gt;</small></span></label>
-      <label class="check"><input type="radio" name="addr" value="domain"><span>Your own domain<small>e.g. dashboard.example.com or dashboard.home.lan</small></span></label>
+      <label class="check"><input type="radio" name="addr" value="proxy"><span>Behind my own reverse proxy<small>Nginx Proxy Manager, Traefik, a Synology proxy … does the domain and HTTPS. Point it at <b id="proxyTarget">http://&lt;container IP&gt;:80</b>.</small></span></label>
+      <label class="check"><input type="radio" name="addr" value="domain"><span>Your own domain, HTTPS from this server<small>No other proxy in front: this server gets the certificate itself (e.g. dashboard.example.com or dashboard.home.lan).</small></span></label>
     </div>
     <div id="domainBox" class="body" hidden>
-      <label>Domain<input id="domain" type="text" autocapitalize="none" spellcheck="false" placeholder="dashboard.example.com"></label>
-      <div class="radio">
+      <label><span id="domainLabel">Domain</span><input id="domain" type="text" autocapitalize="none" spellcheck="false" placeholder="dashboard.example.com"></label>
+      <p class="hint" id="proxyHint" hidden>Used for links only (e.g. the webhook addresses). In your proxy: scheme <code>http</code>, forward to the container's IP, port <code>80</code>, and add <code>proxy_buffering off;</code> for the live feed. This server serves plain HTTP and never redirects, so the proxy's HTTPS can't loop.</p>
+      <div class="radio" id="tlsBox">
         <label class="check"><input type="radio" name="tls" value="public"><span>HTTPS with Let's Encrypt<small>The domain must point at this address publicly, and ports 80/443 must be reachable.</small></span></label>
         <label class="check"><input type="radio" name="tls" value="internal"><span>HTTPS with an internal CA<small>For domains on your home network only (e.g. *.home.lan). Browsers warn until you import Caddy's CA.</small></span></label>
       </div>
-      <label class="check"><input id="ipAccess" type="checkbox"> Also keep it reachable at http://&lt;IP&gt;</label>
+      <label class="check" id="ipAccessBox"><input id="ipAccess" type="checkbox"> Also keep it reachable at http://&lt;IP&gt;</label>
     </div>
     <p class="hint" id="noCaddy" hidden>Note: this server runs without the bundled reverse proxy (Caddy). The domain is only stored; set up HTTPS in front of it yourself.</p>
   </section>
@@ -305,7 +307,7 @@ function validate(id) {
       if ($('pw').value !== $('pw2').value) return 'The passwords don\'t match.';
     }
   }
-  if (id === 's-address' && addrMode() === 'domain' && !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/i.test($('domain').value.trim())) return 'Please enter a valid domain.';
+  if (id === 's-address' && (addrMode() === 'domain' || (addrMode() === 'proxy' && $('domain').value.trim())) && !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/i.test($('domain').value.trim())) return 'Please enter a valid domain.';
   if (id === 's-pve' && $('pveOn').checked) {
     if (!$('pveUrl').value.trim() || !$('pveTokenId').value.trim() || (!$('pveSecret').value && !cfg.proxmox.has_secret)) return 'Please fill in URL, token ID and secret.';
     if (!$('pveNode').value) return 'Please "Test connection" first so the node can be picked.';
@@ -333,7 +335,13 @@ $('token').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('tokenG
 
 // ---------- address ----------
 const addrMode = () => document.querySelector('input[name=addr]:checked')?.value || 'ip';
-function syncAddr() { $('domainBox').hidden = addrMode() !== 'domain'; }
+function syncAddr() {
+  const m = addrMode();
+  $('domainBox').hidden = m === 'ip';
+  $('tlsBox').hidden = $('ipAccessBox').hidden = m !== 'domain';
+  $('proxyHint').hidden = m !== 'proxy';
+  $('domainLabel').textContent = m === 'proxy' ? 'Public address (optional)' : 'Domain';
+}
 document.querySelectorAll('input[name=addr]').forEach((r) => r.addEventListener('change', syncAddr));
 
 // ---------- proxmox ----------
@@ -622,7 +630,8 @@ function load(c) {
   $('title').value = c.title;
   $('user').value = c.user;
   $('pwHint').innerHTML = c.setup_done ? '<span class="hint">(leave empty to keep it)</span>' : '';
-  document.querySelector(`input[name=addr][value=${c.domain ? 'domain' : 'ip'}]`).checked = true;
+  document.querySelector(`input[name=addr][value=${c.behind_proxy ? 'proxy' : c.domain ? 'domain' : 'ip'}]`).checked = true;
+  $('proxyTarget').textContent = `http://${c.lan || '<container IP>'}:${c.caddy ? 80 : c.port}`;
   document.querySelector(`input[name=tls][value=${c.tls === 'internal' ? 'internal' : 'public'}]`).checked = true;
   $('domain').value = c.domain;
   $('ipAccess').checked = c.ip_access !== false;
@@ -669,7 +678,7 @@ function collect() {
   const pveOn = $('pveOn').checked;
   return {
     title: $('title').value.trim(), user: $('user').value.trim(), password: $('pw').value,
-    domain: addrMode() === 'domain' ? $('domain').value.trim() : '', tls: document.querySelector('input[name=tls]:checked').value, ip_access: $('ipAccess').checked,
+    domain: addrMode() === 'ip' ? '' : $('domain').value.trim(), behind_proxy: addrMode() === 'proxy', tls: document.querySelector('input[name=tls]:checked').value, ip_access: $('ipAccess').checked,
     proxmox: pveOn ? pveInput() : {},
     // Without a successful connection test the lists aren't shown; keep what was saved instead of clearing it.
     storages: !pveOn ? [] : $('pveFound').hidden ? cfg.storages : checked('pveStorages'),
@@ -686,7 +695,7 @@ function renderSummary() {
   const on = Object.entries(d.apps).filter(([, a]) => a.enabled).map(([k]) => cfg.builtin[k].name).concat(d.custom_apps.map((a) => a.name || '(no name)'));
   const rows = [
     ['Title', d.title || 'Media Server Dashboard'], ['User', d.user], ['Password', d.password ? 'new' : 'unchanged'],
-    ['Address', d.domain ? `https://${d.domain} (${d.tls === 'internal' ? 'internal CA' : "Let's Encrypt"})${d.ip_access ? ' + http://IP' : ''}` : 'http://IP'],
+    ['Address', d.behind_proxy ? `behind your proxy${d.domain ? ' · https://' + d.domain : ''} → http://IP:80` : d.domain ? `https://${d.domain} (${d.tls === 'internal' ? 'internal CA' : "Let's Encrypt"})${d.ip_access ? ' + http://IP' : ''}` : 'http://IP'],
     ['Proxmox', d.proxmox.url ? `${d.proxmox.url} · Node ${d.proxmox.node}` : 'not connected'],
     ['Storages', d.proxmox.url ? (d.storages.join(', ') || 'all') : '–'], ['Watched guests', d.watch_guests.join(', ') || '–'],
     ['Apps', on.join(', ') || 'none'],
@@ -698,7 +707,7 @@ function renderSummary() {
 
 // ---------- changes and saving ----------
 // Which tab each saved field belongs to, so the tabs can show where something changed.
-const FIELD_TABS = { title: 's-user', user: 's-user', password: 's-user', domain: 's-address', tls: 's-address', ip_access: 's-address',
+const FIELD_TABS = { title: 's-user', user: 's-user', password: 's-user', domain: 's-address', behind_proxy: 's-address', tls: 's-address', ip_access: 's-address',
   proxmox: 's-pve', storages: 's-pve', watch_guests: 's-pve', apps: 's-apps', custom_apps: 's-apps', home: 's-home', game: 's-live', new_webhook_token: 's-live' };
 let saved = null;
 function snapshot() { const d = collect(); return Object.fromEntries(Object.entries(d).map(([k, v]) => [k, JSON.stringify(v)])); }

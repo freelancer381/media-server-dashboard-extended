@@ -73,6 +73,12 @@ class Helpers(unittest.TestCase):
         self.assertIn("tls internal", site)
         self.assertNotIn("http://", site)
 
+    def test_caddy_site_behind_proxy(self):
+        site = server.caddy_site({"behind_proxy": True, "domain": "dash.example.org"})
+        self.assertNotIn("dash.example.org", site)  # the user's proxy does the domain and HTTPS: no redirect loop
+        self.assertIn("http:// {", site)
+        self.assertIn("header_up X-Msd-Forwarded-For", site)
+
     def test_password_hash(self):
         h = server.hash_password("pw", iterations=1000)
         self.assertEqual(server.hash_password("pw", h["salt"], 1000)["hash"], h["hash"])

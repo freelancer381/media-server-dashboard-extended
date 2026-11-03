@@ -51,10 +51,17 @@ Open `http://<container-ip>/setup`, enter the setup token, then:
 
 ## Behind Nginx Proxy Manager or another proxy
 
-Point the proxy at the container's IP on port **80** (Caddy), not 8900: the dashboard only listens on
-127.0.0.1:8900 inside the container, so port 8900 gives a 502 Bad Gateway. Choose "By IP address only" in
-the wizard (your proxy does the HTTPS) and add `proxy_buffering off;` for the live feed. See
-[docker.md](docker.md#nginx-proxy-manager) for the details.
+In the wizard's **Address** step choose **"Behind my own reverse proxy"** and enter your public domain (used
+for links such as the webhook addresses). Then point the proxy at the container's IP, scheme `http`, port
+**80** (Caddy), and add `proxy_buffering off;` for the live feed.
+
+- **502 Bad Gateway:** port 8900. The dashboard only listens on 127.0.0.1:8900 inside the container; use 80.
+- **Too many redirects:** the address step is set to "Your own domain, HTTPS from this server". Then Caddy
+  redirects to HTTPS itself and loops with your proxy's HTTPS. Choose "Behind my own reverse proxy" (open
+  `http://<container-ip>/setup` to change it).
+
+In this mode the login lockout sees the real visitor's address and the login cookie is marked secure. See
+[docker.md](docker.md#nginx-proxy-manager) for the proxy settings.
 
 ## Updates
 

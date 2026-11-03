@@ -14,6 +14,7 @@ Settings live in $MSD_DATA/config.json (default: next to this file), written by 
 import base64
 import hashlib
 import hmac
+import ipaddress
 import html
 import http.cookies
 import json
@@ -72,6 +73,9 @@ SETUP_DONE = bool(AUTH.get("user") and AUTH.get("hash"))
 # Requests from these addresses are a reverse proxy (Caddy in the LXC): the real client is in X-Forwarded-For.
 TRUSTED_PROXIES = set(CONFIG.get("trusted_proxies") or []) | {p.strip() for p in os.environ.get("MSD_TRUSTED_PROXIES", "").split(",") if p.strip()}
 INTERNET_CHECK = CONFIG.get("internet_check") or "1.1.1.1:443"
+# Behind the user's own reverse proxy (Nginx Proxy Manager, Traefik …) in front of the LXC's Caddy:
+# Caddy then only serves HTTP and hands on what that proxy said about the visitor (see caddy_site).
+BEHIND_PROXY = bool(CONFIG.get("behind_proxy"))
 WATCH_GUESTS = [str(g) for g in CONFIG.get("watch_guests") or []]
 STORAGES = CONFIG.get("storages") or []  # empty: every active storage on the node
 PVE = CONFIG.get("proxmox") or {}
@@ -1154,7 +1158,7 @@ def public_config():
     p = c.get("proxmox") or {}
     return {
         "setup_done": SETUP_DONE, "demo": DEMO, "title": TITLE, "user": AUTH.get("user", ""),
-        "domain": c.get("domain", ""), "tls": c.get("tls", "public"), "ip_access": c.get("ip_access", True),
+        "domain": c.get("domain", ""), "tls": c.get("tls", "public"), "ip_access": c.get("ip_access", True), "behind_proxy": bool(c.get("behind_proxy")),
         "caddy": bool(c.get("caddy_site_file")), "lan": state["network"].get("lan", ""), "port": PORT,
         "proxmox": {"url": p.get("url", ""), "node": p.get("node", ""), "token_id": p.get("token_id", ""), "has_secret": bool(p.get("token_secret")),
                     "verify_tls": p.get("verify_tls", True), "ca_file": p.get("ca_file", "")},
@@ -1265,6 +1269,7 @@ def build_config(req):
     if domain and not DOMAIN_RE.match(domain):
         raise ValueError(f"invalid domain: {domain}")
     c["domain"] = domain
+    c["behind_proxy"] = bool(req.get("behind_proxy"))
     c["tls"] = "internal" if req.get("tls") == "internal" else "public"
     c["ip_access"] = bool(req.get("ip_access", True))
 
@@ -1349,8 +1354,18 @@ def clean_icon(icon, name):
 
 
 def caddy_site(c):
-    """The Caddy site for the reverse proxy in the LXC: HTTPS on the domain if there is one, plain HTTP by IP otherwise."""
+    """The Caddy site for the reverse proxy in the LXC: HTTPS on the domain if there is one, plain HTTP by IP otherwise.
+    Behind another proxy: plain HTTP only (that proxy does HTTPS; redirecting here would loop), passing on what the
+    proxy said about the visitor in headers of our own. Debian's Caddy 2.6 has no trusted_proxies setting for this."""
     up = f"reverse_proxy 127.0.0.1:{c.get('port') or 8900}"
+    if c.get("behind_proxy"):
+        return ("# Written by the dashboard's setup wizard; changes here are overwritten.\n"
+                "# Behind your own reverse proxy: HTTP only, no redirects.\n"
+                f"http:// {{\n    {up} {{\n"
+                "        header_up X-Msd-Peer {http.request.remote.host}\n"
+                "        header_up X-Msd-Forwarded-For {http.request.header.X-Forwarded-For}\n"
+                "        header_up X-Msd-Forwarded-Proto {http.request.header.X-Forwarded-Proto}\n"
+                "    }\n}\n")
     blocks = []
     if c.get("domain"):
         tls = "\n    tls internal" if c.get("tls") == "internal" else ""
@@ -1402,15 +1417,29 @@ def save_and_restart(c):
 def dashboard_url(c, lan):
     """Where to go after saving: the new domain if Caddy serves it; otherwise stay on the address in use
     (in Docker or behind your own proxy, only the browser knows the right one)."""
-    if c.get("domain") and c.get("caddy_site_file"):
+    if c.get("domain") and c.get("caddy_site_file") and not c.get("behind_proxy"):
         return f"https://{c['domain']}/"
     return "/"
 
 
 # ---------- web server ----------
 class Handler(BaseHTTPRequestHandler):
+    def via_proxy(self, header):
+        """What the user's own proxy (in front of Caddy) said, if this came through Caddy from the local network."""
+        if not BEHIND_PROXY or self.client_address[0] not in TRUSTED_PROXIES:
+            return None
+        try:
+            if not ipaddress.ip_address(self.headers.get("X-Msd-Peer", "").strip()).is_private:
+                return None
+        except ValueError:
+            return None
+        return self.headers.get(header, "")
+
     def client_ip(self):
         ip = self.client_address[0]
+        chain = [p.strip() for p in (self.via_proxy("X-Msd-Forwarded-For") or "").split(",") if p.strip()]
+        if chain:
+            return chain[-1]  # the visitor as the user's proxy saw it
         if ip in TRUSTED_PROXIES:
             forwarded = [p.strip() for p in self.headers.get("X-Forwarded-For", "").split(",") if p.strip()]
             if forwarded:
@@ -1418,6 +1447,8 @@ class Handler(BaseHTTPRequestHandler):
         return ip
 
     def https(self):
+        if (self.via_proxy("X-Msd-Forwarded-Proto") or "") == "https":
+            return True
         return self.client_address[0] in TRUSTED_PROXIES and self.headers.get("X-Forwarded-Proto", "") == "https"
 
     def authed(self):
