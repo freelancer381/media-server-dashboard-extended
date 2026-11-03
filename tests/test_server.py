@@ -164,3 +164,23 @@ class NZBGet(unittest.TestCase):
         server.read_nzbget()
         self.assertFalse(server.state["sab"]["ok"])
         self.assertEqual(server.state["sab"]["client"], "NZBGet")
+
+
+class Posters(unittest.TestCase):
+    def test_open_link_and_fallbacks(self):
+        link = server.open_link("movie", "Dune", 2021, "dune-2021")
+        self.assertTrue(link.startswith("/api/open?") and "title=Dune" in link and "slug=dune-2021" in link)
+        saved = dict(server.BY_KIND)
+        try:
+            server.BY_KIND["radarr"] = server.make_app("radarr", {"url": "http://r:7878", "api_key": "k", "web_url": "https://radarr.home.lan"}, server.BUILTIN["radarr"])
+            self.assertEqual(server.open_target("movie", "Dune", "2021", "dune-2021"), "https://radarr.home.lan/movie/dune-2021")
+            self.assertIsNone(server.open_target("movie", "Dune", "2021", "../../evil"))
+        finally:
+            server.BY_KIND.clear()
+            server.BY_KIND.update(saved)
+
+    def test_old_updater_status_shows_in_english(self):
+        st = server.english({"steps": [{"name": "Signatur prüfen"}], "log": ["21:00 Fertig"], "last": {"error": "Signatur ungültig: x"}})
+        self.assertEqual(st["steps"][0]["name"], "Check signature")
+        self.assertEqual(st["log"], ["21:00 Done"])
+        self.assertEqual(st["last"]["error"], "invalid signature: x")

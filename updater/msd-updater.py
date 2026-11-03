@@ -31,7 +31,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
-UPDATER_VERSION = "1.0.0"
+UPDATER_VERSION = "1.1.0"
 CONF_FILE = os.environ.get("MSD_UPDATER_CONF") or "/etc/media-server-dashboard/updater.json"
 VERSION_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 ISSUER = "https://token.actions.githubusercontent.com"
@@ -281,6 +281,25 @@ class Updater:
             os.remove(os.path.join(bdir, f))
         return path
 
+    def self_update(self, release_dir):
+        """After a verified, healthy update: take the update service from that release if it is newer.
+        It comes from the same signed archive as the app, so it is trusted the same way."""
+        new = os.path.join(release_dir, "updater", "msd-updater.py")
+        me = os.path.realpath(self.c.get("self_path") or __file__)
+        try:
+            text = open(new, encoding="utf-8").read()
+            m = re.search(r'^UPDATER_VERSION = "(\d+\.\d+\.\d+)"', text, re.M)
+            if not m or vtuple(m[1]) <= vtuple(UPDATER_VERSION) or not os.access(os.path.dirname(me), os.W_OK):
+                return
+            tmp = me + ".new"
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.write(text)
+            os.chmod(tmp, 0o755)
+            os.replace(tmp, me)
+            self.log(f"Update service updated to {m[1]}")
+        except (OSError, ValueError) as e:
+            self.log(f"Update service stays at {UPDATER_VERSION}: {e}")
+
     def prune(self):
         rdir = os.path.join(self.c["app_root"], "releases")
         cur = self.current_target()
@@ -397,6 +416,7 @@ class Updater:
             self.log(f"Version {version} is running")
             self.step("Health check", "done")
             self.step("Clean up")
+            self.self_update(dest)
             self.prune()
             shutil.rmtree(work, ignore_errors=True)
             self.step("Clean up", "done")

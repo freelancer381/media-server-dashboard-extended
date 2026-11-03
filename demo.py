@@ -4,6 +4,7 @@ Everything moves with the clock, so the graphs scroll and the workers come and g
 """
 import html
 import json
+import os
 import math
 import time
 
@@ -30,7 +31,7 @@ def iso(ms):
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ms / 1000))
 
 
-def payload(title, version="demo"):
+def payload(title, version="demo", boot=""):
     now = time.time()
     ms = int(now * 1000)
     ts = [now - (149 - i) * 2 for i in range(150)]
@@ -42,6 +43,8 @@ def payload(title, version="demo"):
     sab = [r * 0.9 for r in rx]
 
     phase = int(now // 45) % 4  # every 45 seconds someone else is busy
+    # For 45 seconds every 5 minutes the Proxmox host "goes away", so the office's panic can be seen.
+    fire = os.environ.get("MSD_DEMO_FIRE") == "1" or int(now) % 300 >= 255
     queue = [
         {"id": f"demo{i}", "title": f"{n}.{y}.1080p.WEB-DL", "name": f"{n} ({y})", "pct": max(0.0, round(wave(now, 20, 20, 95, i) - i * 25, 1)),
          "left": f"0:{12 + i * 7:02d}:00", "size": f"{3 + i}.{i} GB", "state": "Downloading" if i == 0 else "Queued"}
@@ -71,7 +74,7 @@ def payload(title, version="demo"):
 
     poster = lambda kind, i: f"/demo-poster/{kind}{i}.svg"
     return json.dumps({
-        "title": title, "now": ms, "alerts": [],
+        "title": title, "now": ms, "alerts": [{"level": "error", "source": "Proxmox", "message": "API not reachable (URLError: timed out)"}] if fire else [],
         "history": {"t": [int(t * 1000) for t in ts], "cpu": cpu, "mem": mem, "rx": rx, "tx": tx, "disk": disk, "sab": sab},
         "upcoming": [{"kind": "Episode", "title": f"{SHOWS[i][0]} S0{i + 1}E0{i + 4}", "when": iso(ms + (i + 1) * 86_400_000)} for i in range(3)]
         + [{"kind": "Movie", "title": MOVIES[5][0], "when": iso(ms + 5 * 86_400_000)}],
@@ -83,7 +86,8 @@ def payload(title, version="demo"):
         "sab": {"ok": True, "version": "4.3.3", "paused": False, "speed": sab[-1], "left": 21 * GB, "eta": "0:34:10", "queueTotal": 12, "queue": queue, "failed": 0,
                 "totals": {"day": 38 * GB, "week": 212 * GB, "month": 840 * GB, "total": 9800 * GB}},
         "radarr": {"ok": True, "version": "5.0", "library": {"total": 412, "have": 398, "size": 3900 * GB}, "missing": 14,
-                   "recent": [{"title": n, "year": y, "poster": poster("m", i), "size": 8 * GB, "quality": "Bluray-1080p", "when": iso(ms - (i + 1) * 5_400_000)} for i, (n, y, *_) in enumerate(MOVIES)],
+                   "recent": [{"title": n, "year": y, "poster": poster("m", i), "size": 8 * GB, "quality": "Bluray-1080p", "when": iso(ms - (i + 1) * 5_400_000),
+                              "open": "https://www.themoviedb.org/search?query=" + n.replace(" ", "+")} for i, (n, y, *_) in enumerate(MOVIES)],
                    "upcoming": [], "health": [], "roots": [{"path": "/data/media/movies", "ok": True}]},
         "sonarr": {"ok": True, "version": "4.0", "library": {"total": 64, "have": 2210, "episodes": 2380, "size": 5100 * GB}, "missing": 30,
                    "recent": [{"title": n, "sub": e, "poster": poster("s", i), "quality": "WEBDL-1080p", "when": iso(ms - (i + 1) * 7_200_000)} for i, (n, e, *_) in enumerate(SHOWS)],
@@ -93,8 +97,8 @@ def payload(title, version="demo"):
         "activity": activity,
         "network": {"lan": "", "vpn": False, "online": True, "ping": 14.0},
         "disks": [{"name": "local-zfs", "total": 900 * GB, "free": 610 * GB}, {"name": "media", "total": 16000 * GB, "free": 2700 * GB}],
-        "proxmox": {"ok": True, "guests": []},
-        "version": version, "update": {"available": None, "state": "idle", "last": {}, "acked": True},
+        "proxmox": {"ok": not fire, "guests": [], **({"error": "URLError: timed out"} if fire else {})},
+        "version": version, "boot": boot, "update": {"available": None, "state": "idle", "last": {}, "acked": True},
         "home": {"enabled": True, "side": "right", "layout": "grid", "tiles": [
             {"name": n, "url": "", "icon": ic, "check": f"192.168.1.{20 + i}:{port}", "up": True, "ms": 1 + i % 3,
              "guest": {"id": 101 + i, "name": n.lower(), "type": "lxc", "status": "running", "cpu": round(wave(now, 30 + i * 7, 1, 35, i), 1),

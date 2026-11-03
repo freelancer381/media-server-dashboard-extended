@@ -99,6 +99,14 @@ table.home .icon { width: 22px; height: 22px; font-size: 14px; border-radius: 6p
 .msg .hd { display: flex; gap: 6px; align-items: baseline; font-size: 12px; }
 .msg .hd b { font-weight: 600; } .msg .hd small { color: var(--muted); font-size: 10.5px; } .msg .hd time { color: var(--muted); font-size: 10.5px; margin-left: auto; }
 .msg p { margin: 1px 0 0; font-size: 12.5px; line-height: 1.35; overflow-wrap: anywhere; }
+.msg .side { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.msg .x { background: none; border: 0; color: var(--muted); font-size: 15px; line-height: 1; padding: 0 2px; cursor: pointer; opacity: 0; transition: opacity .15s, color .15s; }
+.msg:hover .x, .msg .x:focus-visible { opacity: 1; }
+.msg .x:hover { color: var(--text); }
+@media (hover: none) { .msg .x { opacity: .7; } }
+.msg.gone { opacity: 0; transform: translateX(-12px); transition: opacity .25s, transform .25s; }
+#feed header .clear { margin-left: auto; font-size: 11.5px; font-weight: 500; padding: 3px 8px; }
+#feed header .clear + .live { margin-left: 4px; }
 .msg .xp { font-style: normal; font-size: 10.5px; font-weight: 700; color: #f6c544; white-space: nowrap; padding-top: 2px; }
 .team-top { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 12px; color: var(--muted); padding: 2px 2px 6px; }
 .team-top b { color: var(--text); }
@@ -135,6 +143,7 @@ table.home .icon { width: 22px; height: 22px; font-size: 14px; border-radius: 6p
 .tag.link { cursor: pointer; transition: transform .15s, box-shadow .15s; }
 .tag.link:hover, .tag.link:focus-visible { transform: translateY(-2px); box-shadow: 0 8px 18px rgba(0, 0, 0, .28); }
 .pile:empty { display: none; }
+.label.running .tag { display: none; }  /* in a panic only the shouts show, so the tags don't pile up */
 .tag span:empty { display: none; }
 .tag span.busy { color: #2563c9; }
 .tag span.out { color: #d43b33; }
@@ -171,7 +180,7 @@ table.home .icon { width: 22px; height: 22px; font-size: 14px; border-radius: 6p
     <div id="scene"><div id="labels"></div><div class="hint">Drag to turn the room · scroll or pinch to zoom</div>
       <section id="feed" class="glass" aria-label="Live feed">
         <header role="tablist"><button role="tab" aria-selected="true" data-tab="chat">💬 Live</button><button role="tab" aria-selected="false" data-tab="team" id="teamTab">🏆 Team</button>
-          <span class="live" id="liveDot" title="Live connection"><i></i><span>live</span></span><button class="fold" id="feedFold" aria-label="Show the whole feed">▾</button></header>
+          <button class="clear" id="feedClear" title="Dismiss all messages">Clear</button><span class="live" id="liveDot" title="Live connection"><i></i><span>live</span></span><button class="fold" id="feedFold" aria-label="Show the whole feed">▾</button></header>
         <div class="pane" id="chat" role="tabpanel" aria-live="polite"><div class="empty">Nothing has happened yet. As soon as your apps do something, it shows up here.</div></div>
         <div class="pane" id="team" role="tabpanel" hidden></div>
       </section>
@@ -416,7 +425,8 @@ const wallPosters = [0, 1, 2, 3].map((i) => {
 function showPosters(items) {
   wallPosters.forEach((p, i) => {
     const m = items[i];
-    p.mesh.userData.poster = m ? `${m.title}${m.sub ? ` (${m.sub})` : ''}\nNew in the library` : null;
+    p.mesh.userData.poster = m ? `${m.title}${m.sub ? ` (${m.sub})` : ''}\nNew in the library${m.open ? '\n\nClick to open ↗' : ''}` : null;
+    p.mesh.userData.open = m && m.open;
     const url = m && m.poster;
     if (url === p.url) return;
     p.url = url;
@@ -900,6 +910,12 @@ function updateDataCenter(d) {
   dcTag.querySelector('.dot').className = 'dot ' + (issues.some((a) => a.level === 'error') ? 'error' : issues.length ? 'warning' : '');
   dcTag.querySelector('b').textContent = s.host || 'Proxmox host';
   dcTag.querySelector('span').textContent = `CPU ${dcState.cpu}% · Mem ${Math.round(dcState.mem)}% · ↓ ${fmtMbit(last(h.rx))}`;
+  if (d.proxmox && d.proxmox.ok === false) {
+    // the host is gone: every rack segment glows red and the tag says so
+    for (const r of racks) r.segs.forEach((seg) => { seg.material = segLit[segLit.length - 1]; });
+    dcTag.querySelector('span').textContent = '🔥 not reachable';
+    dcTag.querySelector('.dot').className = 'dot error';
+  }
   const badge = dcTag.querySelector('.badge');
   badge.classList.toggle('show', issues.length > 0);
   badge.classList.toggle('error', issues.some((a) => a.level === 'error'));
@@ -1227,12 +1243,13 @@ function animate(p, dt, t) {
   p.shoulderL.rotation.z = p.shoulderR.rotation.z = 0;
   p.elbowL.rotation.x = p.elbowR.rotation.x = -0.15;
   head.rotation.set(0, Math.sin(t * 0.4 + p.phase) * 0.15, 0);
+  panicStep(p);
 
   if (p.path.length) {
     const next = p.path[0], pos = root.position;
     const dx = next.x - pos.x, dz = next.z - pos.z, dist = Math.hypot(dx, dz);
-    const step = SPEED * dt;
-    if (dist <= step) { pos.copy(next); (p.done || (p.done = [])).push(p.path.shift()); if (!p.path.length) place(p, p.arrive); }
+    const step = (p.panicking ? PANIC_SPEED : SPEED) * dt;
+    if (dist <= step) { pos.copy(next); (p.done || (p.done = [])).push(p.path.shift()); if (!p.path.length && p.arrive) place(p, p.arrive); }
     else {
       pos.x += dx / dist * step; pos.z += dz / dist * step;
       let diff = Math.atan2(dx, dz) - root.rotation.y;
@@ -1247,6 +1264,15 @@ function animate(p, dt, t) {
     p.elbowL.rotation.x = p.elbowR.rotation.x = -0.45;
     body.position.y = Math.abs(Math.cos(w)) * 0.05;
     head.rotation.set(0, 0, 0);
+    if (p.panicking) {
+      // running with both arms up, waving
+      p.shoulderL.rotation.x = -2.9 + Math.sin(t * 14 + p.phase) * 0.35;
+      p.shoulderR.rotation.x = -2.9 + Math.sin(t * 14 + p.phase + 2) * 0.35;
+      p.shoulderL.rotation.z = 0.3; p.shoulderR.rotation.z = -0.3;
+      p.elbowL.rotation.x = p.elbowR.rotation.x = -0.2;
+      head.rotation.set(-0.15, Math.sin(t * 9 + p.phase) * 0.5, 0);
+      body.position.y = Math.abs(Math.cos(w * 1.4)) * 0.09;
+    }
     return;
   }
   const sitting = pose === 'type' || pose === 'couch' || pose === 'beanbag';
@@ -1335,6 +1361,7 @@ let labelFrame = 0;
 function placeLabels() {
   const items = [];
   for (const p of Object.values(people)) {
+    p.label.classList.toggle('running', !!p.panicking);
     const pos = p.root.position, home = seatOf(p).at;
     const [x, y] = p.root.visible ? project(pos.x, pos.y + 2.05, pos.z) : project(home[0], 1.2, home[1] + 0.1);
     items.push({ el: p.label, x, y });
@@ -1364,6 +1391,103 @@ function placeLabels() {
 }
 const xy = ([x, y]) => ({ x, y });
 
+// ---------- panic: the Proxmox host can't be reached, the server is on fire ----------
+// Everyone runs up and down their aisle (the aisles are free of furniture) with their arms up and shouts;
+// when the host answers again they walk back to where they were along the usual routes.
+let panic = false;
+const PANIC_SPEED = 4.4;
+const fire = group(-8.0, 0.95, 7.05);
+fire.visible = false;
+const flameMats = ['#ff3d14', '#ff8a1f', '#ffd23f'].map((c) => new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.88, depthWrite: false }));
+const flames = Array.from({ length: 11 }, (_, i) => {
+  const f = new THREE.Mesh(new THREE.ConeGeometry(0.16 + (i % 3) * 0.06, 0.95, 8), flameMats[i % 3]);
+  const a = i / 11 * Math.PI * 2, r = i < 3 ? 0.05 : 0.3 + (i % 2) * 0.18;
+  f.position.set(Math.cos(a) * r, 0.45, Math.sin(a) * r);
+  f.userData.ph = Math.random() * 6;
+  fire.add(f);
+  return f;
+});
+const smokeMat = new THREE.MeshStandardMaterial({ color: '#4b505b', transparent: true, opacity: 0.4, depthWrite: false });
+const smoke = Array.from({ length: 9 }, (_, i) => {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 8), smokeMat);
+  m.userData.t = i / 9;
+  fire.add(m);
+  return m;
+});
+const fireLight = new THREE.PointLight(0xff6a2a, 0, 9, 1.4);
+fireLight.position.set(-8.0, 2.2, 7.05);
+scene.add(fireLight);
+function animateFire(t, dt) {
+  if (!fire.visible) return;
+  for (const f of flames) {
+    const k = Math.sin(t * 13 + f.userData.ph) * 0.5 + 0.5;
+    f.scale.set(0.85 + k * 0.3, 0.7 + k * 0.7, 0.85 + k * 0.3);
+    f.position.y = 0.4 + k * 0.15;
+    f.rotation.y += dt * 2;
+  }
+  for (const m of smoke) {
+    m.userData.t = (m.userData.t + dt * 0.28) % 1;
+    const u = m.userData.t;
+    m.position.set(Math.sin(u * 9 + m.id) * 0.3, 1.1 + u * 3.2, Math.cos(u * 7 + m.id) * 0.3);
+    m.scale.setScalar(0.6 + u * 1.6);
+  }
+  smokeMat.opacity = 0.35;
+  fireLight.intensity = 7 + Math.sin(t * 23) * 2 + Math.sin(t * 7) * 1.5;
+}
+const SHOUTS = ['🔥 The server is on fire!', '😱 Proxmox is gone!', '🧯 Where is the fire extinguisher?', '📞 Somebody call the admin!', '🚨 Everybody stay calm!', '💾 Did anyone make a backup?'];
+let shoutTimer = null;
+function setPanic(on) {
+  if (on === panic) return;
+  panic = on;
+  fire.visible = on;
+  if (!on) fireLight.intensity = 0;
+  clearInterval(shoutTimer);
+  if (on) {
+    shoutTimer = setInterval(() => {
+      const running = Object.values(people).filter((p) => p.root.visible && p.panicking);
+      const p = running[Math.floor(Math.random() * running.length)];
+      if (p) say({ source: p.name, text: SHOUTS[Math.floor(Math.random() * SHOUTS.length)], level: 'error' });
+    }, 2200);
+  }
+}
+const aisleOf = (p) => (p.i < DESKS.length ? AISLES[DESKS[p.i][1] > 0 ? 1 : 0] : AISLES[0]);
+const v3 = ([x, z]) => new THREE.Vector3(x, 0, z);
+function panicStep(p) {
+  if (!p.root.visible) return;
+  if (panic && !p.panicking && !p.path.length) {
+    // first get onto the aisle the normal way, then run
+    p.panicking = true;
+    p.arrive = null; p.pose = null; p.done = [];
+    const seat = seatOf(p), aisle = aisleOf(p), brk = breakOf(p);
+    const fromBreak = [[seat.at[0], aisle], [CORRIDOR, aisle], ...(brk.via || [])].reverse();
+    p.path = (p.where === 'break' ? fromBreak : [[seat.at[0], aisle]]).map(v3);
+  } else if (p.panicking && !p.path.length) {
+    const aisle = p.panicAisle ?? aisleOf(p);
+    if (panic) {
+      // up and down the aisle, and now and then over the cross aisle to the other one, so they spread out
+      const rx = () => -10.6 + Math.random() * 11.3, jit = () => (Math.random() - 0.5) * 0.5;
+      if (Math.random() < 0.35) {
+        const other = aisle === AISLES[0] ? AISLES[1] : AISLES[0];
+        p.path = [[CORRIDOR, aisle], [CORRIDOR, other], [rx(), other + jit()]].map(v3);
+        p.panicAisle = other;
+      } else p.path = [v3([rx(), aisle + jit()])];
+      p.panicAisle = p.panicAisle ?? aisle;
+      return;
+    }
+    else {
+      // calm again: back over the cross aisle to their own aisle, then to the desk or the break spot
+      p.panicking = false;
+      const seat = seatOf(p), brk = breakOf(p), own = aisleOf(p);
+      const toOwn = aisle === own ? [] : [[CORRIDOR, aisle], [CORRIDOR, own]];
+      p.panicAisle = undefined;
+      const route = p.where === 'break' ? [...toOwn, [CORRIDOR, own], ...(brk.via || []), brk.at] : [...toOwn, [seat.at[0], own], seat.at];
+      p.path = route.map(v3);
+      p.arrive = p.where === 'break' ? brk : seat;
+      p.done = [];
+    }
+  }
+}
+
 // ---------- live data ----------
 const NO_DESK = { screenMat: new THREE.MeshStandardMaterial() };
 let first = true;
@@ -1389,6 +1513,7 @@ function updateBanner(d) {
 }
 function render(d) {
   updateBanner(d);
+  setPanic(!!(d.proxmox && d.proxmox.ok === false));
   d.services.forEach((svc, i) => {
     const p = people[svc.name] || (people[svc.name] = makePerson(svc.name, Object.keys(people).length));
     const bad = svc.issues.some((a) => a.level === 'error');
@@ -1409,7 +1534,7 @@ function render(d) {
     Object.assign(p, { up: svc.up, task: svc.task, issue, url: svc.url });
     p.label.querySelector('.tag').classList.toggle('link', !!svc.url);
     if (!svc.up) { p.where = null; p.path = []; return; }
-    send(p, svc.task ? 'desk' : 'break', first);
+    if (!panic && !p.panicking) send(p, svc.task ? 'desk' : 'break', first);
   });
   first = false;
 
@@ -1425,8 +1550,8 @@ function render(d) {
   const speed = rate >= 1048576 ? (rate / 1048576).toFixed(1) + ' MB/s' : Math.round(rate / 1024) + ' KB/s';
   updateBoard(d);
   const streams = d.cinema.streams || [];
-  const recent = [...(d.radarr.recent || []).map((m) => ({ title: m.title, sub: m.year ? String(m.year) : '', poster: m.poster, when: m.when })),
-    ...(d.sonarr.recent || []).map((m) => ({ title: m.title, sub: m.sub || '', poster: m.poster, when: m.when }))]
+  const recent = [...(d.radarr.recent || []).map((m) => ({ title: m.title, sub: m.year ? String(m.year) : '', poster: m.poster, when: m.when, open: m.open })),
+    ...(d.sonarr.recent || []).map((m) => ({ title: m.title, sub: m.sub || '', poster: m.poster, when: m.when, open: m.open }))]
     .sort((a, b) => String(b.when).localeCompare(String(a.when))).slice(0, 4);
   const viewers = (d.cinema.profiles || []).map((name) => {
     const st = streams.find((x) => x.who === name);
@@ -1566,7 +1691,7 @@ const KIND_ICONS = { import: '📦', upgrade: '⬆️', download: '📥', grab: 
 const colorOf = (name) => (STAFF[name] && STAFF[name].color) || ['#7fe3d0', '#f6d77a', '#c9b8ff', '#a8d8ff', '#f7b8d4', '#d7f08a'][[...name].reduce((a, c) => a + c.charCodeAt(0), 0) % 6];
 const avatar = (name) => `<span class="av" style="background:${colorOf(name)}">${escH([...name][0] || '?')}</span>`;
 const playerOf = (name) => game.players.find((p) => p.name === name);
-const hhmm = (ms) => new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const hhmm = (ms) => new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 let tab = 'chat';
 try { if (localStorage.getItem('feedOpen') === '1') $('feed').classList.add('open'); } catch { /* storage blocked */ }
 function syncFold() {
@@ -1587,15 +1712,38 @@ function msgHtml(e, fresh) {
   const p = playerOf(e.source);
   const special = e.kind === 'level' || e.kind === 'badge';
   const cls = ['msg', fresh ? 'new' : '', special ? 'game' : '', e.level === 'warning' ? 'warning' : '', e.level === 'error' ? 'error' : ''].filter(Boolean).join(' ');
-  return `<div class="${cls}">${avatar(e.source)}<div><div class="hd"><b>${escH(e.source)}</b>${p && game.enabled ? `<small>Lvl ${p.level}</small>` : ''}<time>${hhmm(e.ts)}</time></div>
-    <p>${escH(e.icon || '')} ${escH(e.text)}</p></div>${e.xp && game.enabled ? `<em class="xp">+${e.xp} XP</em>` : '<span></span>'}</div>`;
+  return `<div class="${cls}" data-id="${e.id}">${avatar(e.source)}<div><div class="hd"><b>${escH(e.source)}</b>${p && game.enabled ? `<small>Lvl ${p.level}</small>` : ''}<time>${hhmm(e.ts)}</time></div>
+    <p>${escH(e.icon || '')} ${escH(e.text)}</p></div><div class="side">${e.xp && game.enabled ? `<em class="xp">+${e.xp} XP</em>` : ''}<button class="x" title="Dismiss" aria-label="Dismiss">×</button></div></div>`;
 }
+// Dismissed lines stay hidden in this browser: single ones by id, "Clear" hides everything up to now.
+const hidden = { ids: new Set(), upTo: 0 };
+try { const h = JSON.parse(localStorage.getItem('feedHidden') || '{}'); hidden.ids = new Set(h.ids || []); hidden.upTo = h.upTo || 0; } catch { /* fine */ }
+const saveHidden = () => { try { localStorage.setItem('feedHidden', JSON.stringify({ ids: [...hidden.ids].slice(-300), upTo: hidden.upTo })); } catch { /* fine */ } };
+const visible = (e) => e.id > hidden.upTo && !hidden.ids.has(e.id);
+let lastId = 0;
+$('chat').addEventListener('click', (ev) => {
+  const x = ev.target.closest('.x');
+  if (!x) return;
+  const row = x.closest('.msg');
+  hidden.ids.add(+row.dataset.id);
+  saveHidden();
+  row.classList.add('gone');
+  setTimeout(() => { row.remove(); if (!$('chat').querySelector('.msg')) $('chat').innerHTML = EMPTY_FEED; }, 250);
+});
+$('feedClear').onclick = () => {
+  hidden.upTo = Math.max(hidden.upTo, lastId);
+  hidden.ids.clear();
+  saveHidden();
+  $('chat').innerHTML = EMPTY_FEED;
+};
 const EMPTY_FEED = '<div class="empty">Nothing has happened yet. As soon as your apps do something, it shows up here.</div>';
 function feedInit(events) {
-  const list = events.slice(-60);
+  if (events.length) lastId = Math.max(lastId, events[events.length - 1].id);
+  const list = events.filter(visible).slice(-60);
   $('chat').innerHTML = list.length ? list.reverse().map((e) => msgHtml(e, false)).join('') : EMPTY_FEED;
 }
 function addMsg(e) {
+  lastId = Math.max(lastId, e.id);
   const empty = $('chat').querySelector('.empty');
   if (empty) empty.remove();
   $('chat').insertAdjacentHTML('afterbegin', msgHtml(e, true));
@@ -1638,7 +1786,7 @@ function renderGame() {
 
 // Live data over Server-Sent Events; plain polling while the stream isn't available.
 let es = null, polling = null;
-const PAGE_VERSION = '{{VERSION}}';
+const PAGE_VERSION = '{{VERSION}}', PAGE_BOOT = '{{BOOT}}';
 function setLive(on, text) {
   $('liveDot').classList.toggle('on', on);
   $('liveDot').querySelector('span').textContent = on ? 'live' : 'offline';
@@ -1651,10 +1799,15 @@ function reloadOnce(v) {
   try { if (sessionStorage.getItem('reloadedFor') === v) return false; sessionStorage.setItem('reloadedFor', v); } catch { /* storage blocked: reload anyway */ }
   return true;
 }
-function checkVersion(v) {
+function checkVersion(v, boot) {
   if (v && PAGE_VERSION && !PAGE_VERSION.startsWith('{{') && v !== PAGE_VERSION && reloadOnce(v)) {
     toast(`Updated to ${v} · reloading …`);
     setTimeout(() => location.reload(), 1500);
+    return true;
+  }
+  // restarted with new settings: load the page again so the title, layout and staff match
+  if (boot && !PAGE_BOOT.startsWith('{{') && boot !== PAGE_BOOT && reloadOnce('boot-' + boot)) {
+    location.reload();
     return true;
   }
   return false;
@@ -1665,7 +1818,7 @@ function startStream() {
   es = new EventSource('/api/stream');
   es.addEventListener('hello', (e) => {
     const h = JSON.parse(e.data);
-    if (checkVersion(h.version)) return;
+    if (checkVersion(h.version, h.boot)) return;
     game = h.game; feedInit(h.events); renderGame(); setLive(true);
     if (polling) { clearInterval(polling); polling = null; }
   });
@@ -1686,7 +1839,7 @@ async function tick() {
     const r = await fetch('/api/data', { cache: 'no-store' });
     if (r.status === 401) { location.href = '/login'; return; }
     const d = await r.json();
-    if (checkVersion(d.version)) return;
+    if (checkVersion(d.version, d.boot)) return;
     render(d);
     renderHome(d);
     if (!es) setLive(true);
@@ -1756,7 +1909,8 @@ renderer.domElement.addEventListener('pointerup', (e) => {
   const r = renderer.domElement.getBoundingClientRect();
   pointer.set((e.clientX - r.left) / r.width * 2 - 1, 1 - (e.clientY - r.top) / r.height * 2);
   ray.setFromCamera(pointer, camera);
-  let o = (ray.intersectObjects(Object.values(people).filter((p) => p.root.visible).map((p) => p.root), true)[0] || {}).object;
+  let o = (ray.intersectObjects([...Object.values(people).filter((p) => p.root.visible).map((p) => p.root), ...wallPosters.map((p) => p.mesh)], true)[0] || {}).object;
+  if (o && o.userData.open) return window.open(o.userData.open, '_blank', 'noopener');  // a poster: the title in Plex/Jellyfin
   while (o && !o.userData.person) o = o.parent;
   if (o) openApp(o.userData.person.name);
 });
@@ -1768,6 +1922,7 @@ function frame() {
   code.offset.y = (code.offset.y + dt * 0.08) % 1;
   rally(t);
   animateDataCenter(dt);
+  animateFire(t, dt);
   const now = new Date();
   const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   if (hhmm !== clockFace.shown) { clockFace.shown = hhmm; clockFace.redraw(hhmm); }

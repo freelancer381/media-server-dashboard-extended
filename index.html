@@ -51,7 +51,24 @@ nav.links { display: flex; gap: 6px; }
 
 #alerts { display: grid; gap: 8px; margin-bottom: 12px; }
 #alerts:empty { display: none; }
-.alert { display: flex; gap: 10px; padding: 9px 14px; border-radius: 14px; }
+.alert { display: flex; gap: 10px; align-items: center; padding: 9px 14px; border-radius: 14px; animation: fadeIn .3s ease-out; }
+.alert span { flex: 1; }
+.dismiss { background: none; border: 0; color: var(--muted); font-size: 16px; line-height: 1; cursor: pointer; padding: 0 2px; }
+.dismiss:hover { color: var(--text); }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } }
+.feed { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 330px; overflow-y: auto; }
+.feed li { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: start; padding: 7px 9px; border-radius: 12px; background: rgba(255, 255, 255, .04); border-left: 3px solid transparent; animation: fadeIn .3s ease-out; }
+.feed li.warning { border-left-color: var(--warning); } .feed li.error { border-left-color: var(--critical); }
+.feed li .who2 { font-weight: 600; font-size: 12.5px; }
+.feed li .tx { font-size: 13px; overflow-wrap: anywhere; }
+.feed li time { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.feed li .dismiss { font-size: 14px; }
+.feed li.gone { opacity: 0; transition: opacity .25s; }
+a.poster { color: inherit; text-decoration: none; }
+a.poster .img { transition: transform .2s, box-shadow .2s; }
+a.poster:hover .img, a.poster:focus-visible .img { transform: translateY(-3px) scale(1.02); box-shadow: 0 12px 26px rgba(0, 0, 0, .4); }
+.linkbtn { background: none; border: 0; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; padding: 0; }
+.linkbtn:hover { color: var(--text); }
 .alert b { font-weight: 600; white-space: nowrap; }
 .alert span { min-width: 0; overflow-wrap: anywhere; }
 
@@ -133,7 +150,8 @@ h3:first-child { margin-top: 0; }
     <section class="card"><h2>Recently added movies<span class="right" id="radarrSum"></span></h2><div id="movies"></div></section>
     <section class="card"><h2>Recently added TV shows<span class="right" id="sonarrSum"></span></h2><div id="shows"></div></section>
   </div>
-  <div class="row"><section class="card"><h2>Coming up<span class="right">next 14 days</span></h2><div id="upcoming"></div></section></div>
+  <div class="row r2"><section class="card"><h2>Coming up<span class="right">next 14 days</span></h2><div id="upcoming"></div></section>
+    <section class="card"><h2>Live<span class="right"><button class="linkbtn" id="feedClear" title="Dismiss all messages">Clear</button></span></h2><ul class="feed" id="feed"><li class="empty">Nothing yet.</li></ul></section></div>
 </div>
 <div id="tip"></div>
 <script>
@@ -250,7 +268,11 @@ function who(name) {
 
 function posters(items, none) {
   if (!items.length) return `<div class="empty">${esc(none)}</div>`;
-  return `<div class="posters">${items.map((m) => `<div class="poster" title="${esc(m.title)}"><div class="img">${m.poster ? `<img src="${esc(m.poster)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}</div><b>${esc(m.title)}</b><span>${esc(m.sub || m.quality || m.year || '')}</span><span>${esc(ago(m.when))}</span></div>`).join('')}</div>`;
+  // A poster opens the title in Plex or Jellyfin (or in Radarr/Sonarr) in a new tab.
+  return `<div class="posters">${items.map((m) => {
+    const tag = m.open ? 'a' : 'div', link = m.open ? ` href="${esc(m.open)}" target="_blank" rel="noopener"` : '';
+    return `<${tag} class="poster"${link} title="${esc(m.title)}${m.open ? ' · open' : ''}"><div class="img">${m.poster ? `<img src="${esc(m.poster)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}</div><b>${esc(m.title)}</b><span>${esc(m.sub || m.quality || m.year || '')}</span><span>${esc(ago(m.when))}</span></${tag}>`;
+  }).join('')}</div>`;
 }
 
 // A newer release, an update running, or the result of the last one: shown on the dashboard and in the office.
@@ -273,6 +295,16 @@ function updateBanner(d) {
     }
   }
 }
+const alertKey = (a) => a.source + '|' + a.message;
+let dismissed = new Set();
+try { dismissed = new Set(JSON.parse(localStorage.getItem('alertsDismissed') || '[]')); } catch { /* fine */ }
+const saveDismissed = () => { try { localStorage.setItem('alertsDismissed', JSON.stringify([...dismissed])); } catch { /* fine */ } };
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('.alert .dismiss');
+  if (!b) return;
+  dismissed.add(b.dataset.k); saveDismissed();
+  b.closest('.alert').remove(); html.alerts = null;
+});
 let last = null, html = {};
 // Only touch what changed, so hovering and poster images aren't disturbed by each refresh.
 function put(id, value) { if (html[id] !== value) { html[id] = value; $(id).innerHTML = value; } }
@@ -291,7 +323,12 @@ function render(d) {
   ].filter(Boolean).map((f) => `<span>${esc(f)}</span>`).join(''));
   // Service problems pop up on the service itself and missing drives show under Drives, so only the rest gets a banner.
   const elsewhere = new Set([...d.services.map((v) => v.name), 'Drives']);
-  put('alerts', d.alerts.filter((a) => !elsewhere.has(a.source)).map((a) => `<div class="alert glass"><b>${pill(a.level === 'error' ? 'error' : 'warning', a.source)}</b><span>${esc(a.message)}</span></div>`).join(''));
+  // Dismissed banners stay away while the problem lasts and come back if it returns after being solved.
+  const shown = d.alerts.filter((a) => !elsewhere.has(a.source));
+  const keys = new Set(shown.map(alertKey));
+  for (const k of [...dismissed]) if (!keys.has(k)) dismissed.delete(k);
+  saveDismissed();
+  put('alerts', shown.filter((a) => !dismissed.has(alertKey(a))).map((a) => `<div class="alert glass"><b>${pill(a.level === 'error' ? 'error' : 'warning', a.source)}</b><span>${esc(a.message)}</span><button class="dismiss" data-k="${esc(alertKey(a))}" title="Dismiss" aria-label="Dismiss">×</button></div>`).join(''));
 
   const cpu = h.cpu[h.cpu.length - 1] || 0;
   $('cpuV').innerHTML = `${cpu}%<small>load ${s.load ? s.load[0].toFixed(1) : '-'} of ${s.cores || '-'} cores${s.speed_limit < 100 ? ` · limited to ${s.speed_limit}%` : ''}</small>`;
@@ -332,7 +369,7 @@ function render(d) {
 
 // After a restart (settings saved, update, new container image) the page reconnects by itself and
 // reloads once if a newer version is running.
-const PAGE_VERSION = '{{VERSION}}';
+const PAGE_VERSION = '{{VERSION}}', PAGE_BOOT = '{{BOOT}}';
 let failedSince = 0;
 // Reload at most once per version, so a mismatch that a reload can't fix never turns into a loop.
 function reloadOnce(v) {
@@ -351,6 +388,7 @@ async function tick() {
       $('conn').hidden = false; $('conn').textContent = `Updated to ${d.version} · reloading …`;
       return setTimeout(() => location.reload(), 1200);
     }
+    if (d.boot && !PAGE_BOOT.startsWith('{{') && d.boot !== PAGE_BOOT && reloadOnce('boot-' + d.boot)) return location.reload();
     failedSince = 0;
     $('conn').hidden = true;
     render(d);
@@ -359,6 +397,40 @@ async function tick() {
     $('conn').hidden = false;
     $('conn').textContent = Date.now() - failedSince > 60000 ? 'Dashboard not responding' : 'Reconnecting …';
   }
+}
+// ---------- live feed card: the same messages as the office chat, dismissable ----------
+const feedHidden = { ids: new Set(), upTo: 0 };
+try { const h = JSON.parse(localStorage.getItem('feedHidden') || '{}'); feedHidden.ids = new Set(h.ids || []); feedHidden.upTo = h.upTo || 0; } catch { /* fine */ }
+const saveFeed = () => { try { localStorage.setItem('feedHidden', JSON.stringify({ ids: [...feedHidden.ids].slice(-300), upTo: feedHidden.upTo })); } catch { /* fine */ } };
+let feedLast = 0;
+const feedLine = (e) => `<li data-id="${e.id}" class="${e.level === 'warning' || e.level === 'error' ? e.level : ''}"><span>${esc(e.icon || '•')}</span>
+  <div><span class="who2">${esc(e.source)}</span> <span class="tx">${esc(e.text)}</span></div>
+  <div style="display:flex;gap:6px;align-items:center"><time>${new Date(e.ts).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</time><button class="dismiss" title="Dismiss" aria-label="Dismiss">×</button></div></li>`;
+function feedShow(events) {
+  if (events.length) feedLast = Math.max(feedLast, events[events.length - 1].id);
+  const list = events.filter((e) => e.id > feedHidden.upTo && !feedHidden.ids.has(e.id)).slice(-30).reverse();
+  $('feed').innerHTML = list.length ? list.map(feedLine).join('') : '<li class="empty">Nothing new.</li>';
+}
+$('feed').addEventListener('click', (e) => {
+  const b = e.target.closest('.dismiss');
+  if (!b) return;
+  const li = b.closest('li');
+  feedHidden.ids.add(+li.dataset.id); saveFeed();
+  li.classList.add('gone'); setTimeout(() => { li.remove(); if (!$('feed').querySelector('li')) $('feed').innerHTML = '<li class="empty">Nothing new.</li>'; }, 250);
+});
+$('feedClear').onclick = () => { feedHidden.upTo = Math.max(feedHidden.upTo, feedLast); feedHidden.ids.clear(); saveFeed(); feedShow([]); };
+if (window.EventSource) {
+  const es = new EventSource('/api/stream');
+  es.addEventListener('hello', (e) => feedShow(JSON.parse(e.data).events));
+  es.addEventListener('feed', (e) => {
+    const ev = JSON.parse(e.data);
+    feedLast = Math.max(feedLast, ev.id);
+    const empty = $('feed').querySelector('.empty');
+    if (empty) empty.remove();
+    $('feed').insertAdjacentHTML('afterbegin', feedLine(ev));
+    while ($('feed').children.length > 30) $('feed').lastElementChild.remove();
+  });
+  es.addEventListener('reset', () => feedShow([]));
 }
 document.addEventListener('visibilitychange', tick);
 addEventListener('resize', () => { if (last) render(last); });

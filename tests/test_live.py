@@ -99,6 +99,14 @@ class Game(unittest.TestCase):
         self.assertEqual(again.summary()["players"][0]["xp"], live.XP["subtitle"])
         self.assertGreater(again.next_id, again.recent()[-1]["id"])
 
+    def test_old_german_lines_are_dropped(self):
+        import json as _json
+        with open(f"{self.dir.name}/events.json", "w") as f:
+            _json.dump([{"id": 1, "text": "hat Dune importiert", "source": "Radarr"}, {"id": 2, "text": "imported Dune", "source": "Radarr"},
+                        {"id": 3, "text": "erreicht Level 2! 🎉", "source": "Radarr"}], f)
+        again = live.Live(self.dir.name)
+        self.assertEqual([e["id"] for e in again.recent()], [2])
+
     def test_disabled_game_still_logs(self):
         off = live.Live(self.dir.name, enabled=False)
         ev = off.emit("Radarr", "import", "x", "success")

@@ -134,7 +134,7 @@ echo "error: wrong identity: $args" >&2; exit 1
     def updater(self, **extra):
         return U.Updater({"repo": REPO, "api": self.gh.url, "app_root": self.app_root, "data_dir": self.data, "work_dir": self.work,
                           "cosign": self.cosign, "systemctl": self.systemctl, "health_url": self.gh.url + "/healthz",
-                          "health_timeout": 3, **extra})
+                          "health_timeout": 3, "self_path": f"{self.tmp.name}/msd-updater.py", **extra})
 
     def current(self):
         return open(f"{self.app_root}/current/VERSION").read().strip()
@@ -300,6 +300,29 @@ echo "error: wrong identity: $args" >&2; exit 1
         u.save()
         self.assertEqual(open(target).read(), "keep")
         self.assertFalse(os.path.islink(u.status_file))
+
+    def test_updates_itself_from_a_verified_release(self):
+        mine = f"{self.tmp.name}/msd-updater.py"
+        open(mine, "w").write('UPDATER_VERSION = "1.1.0"\n')
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+            for name, text in {"VERSION": "0.3.0\n", "server.py": "print(1)\n", "updater/msd-updater.py": 'UPDATER_VERSION = "9.0.0"\n# new\n'}.items():
+                info = tarfile.TarInfo("media-server-dashboard-0.3.0/" + name)
+                info.size = len(text.encode())
+                tar.addfile(info, io.BytesIO(text.encode()))
+        self.gh.add("0.3.0", archive=buf.getvalue())
+        u = self.updater()
+        u.install("0.3.0")
+        self.assertEqual(u.status["last"]["result"], "succeeded", u.status["log"])
+        self.assertIn('"9.0.0"', open(mine).read())
+
+    def test_does_not_downgrade_itself(self):
+        mine = f"{self.tmp.name}/msd-updater.py"
+        open(mine, "w").write("keep")
+        self.gh.add("0.3.0")  # its updater has no newer version
+        u = self.updater()
+        u.install("0.3.0")
+        self.assertEqual(open(mine).read(), "keep")
 
     def test_versions(self):
         self.assertTrue(U.satisfies("1.0.0", ">=1.0.0 <2.0.0"))

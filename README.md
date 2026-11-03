@@ -16,6 +16,8 @@ a **Synology**, and watches everything over the network.
 - **Dashboard** (`/`): live graphs for CPU, memory, network and downloads, which services are up (hover one to see what's wrong), the SABnzbd queue, storage, recently added movies and shows, and what's coming up in the next 14 days.
 - **Office** (`/office`): the apps sit at their desks while they're working and wander off to the break room when they're idle. Custom apps join as extra staff.
 - **Live feed** in the office: what the apps do shows up as a chat and as a speech bubble above the worker ("Radarr: imported Dune (2021) in Bluray-2160p"). It comes from the apps' webhooks and from what the dashboard notices itself, pushed live over Server-Sent Events.
+- **Panic:** if the Proxmox host can't be reached, the server in the office catches fire and the staff run around shouting until it answers again.
+- **Posters** open the title in Plex or Jellyfin (or Radarr/Sonarr); workers open their app.
 - **Team board (gamification):** XP, levels and badges for every worker, today's numbers, a leaderboard and the days without errors. Can be switched off.
 - **Start page** beside the office (left or right, tiles or a table): your own links with icons, online checks by IP:port and, for linked Proxmox guests, CPU, memory, traffic and uptime.
 - **Proxmox:** host stats, storages and the state of containers and VMs through the Proxmox API, with a read-only token.

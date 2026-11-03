@@ -260,6 +260,7 @@ const PRESETS = {
 };
 
 let cfg = null, token = '', step = 0, pveResult = null, pveReady = Promise.resolve();
+const BOOT_AT_LOAD = '{{BOOT}}';  // the server process this page came from
 
 async function api(path, body) {
   const r = await fetch(path, {
@@ -573,13 +574,13 @@ function renderUpdates(u) {
   $('updResult').hidden = running || !res || u.acked === last.id;
   if (res && !running) {
     $('updResult').innerHTML = `<span class="status ${res[0]}">${esc(res[1].replace('%s', last.to).replace('%f', last.from))}</span>${last.error ? `<span class="hint">${esc(last.error)}</span>` : ''}
-      <span class="hint">${esc(last.requested_by || '')} · ${last.finished ? new Date(last.finished * 1000).toLocaleString() : ''}</span><div class="row"><button class="ghost mini" id="updAck">Dismiss</button></div>`;
+      <span class="hint">${esc(last.requested_by || '')} · ${last.finished ? new Date(last.finished * 1000).toLocaleString('en-GB') : ''}</span><div class="row"><button class="ghost mini" id="updAck">Dismiss</button></div>`;
     $('updAck').onclick = async () => { await api('/api/update/ack', { id: last.id }); renderUpdates({ ...upd, acked: last.id }); };
   }
   const a = st.available;
   $('updAvail').hidden = running || !a;
   if (a && !running) {
-    $('updAvail').innerHTML = `<b>${esc(a.name || 'Version ' + a.version)}</b><span class="hint">signature checked ✓${a.published ? ' · ' + new Date(a.published).toLocaleDateString() : ''} · <a href="${esc(a.url)}" target="_blank" rel="noopener" style="color:var(--s1)">on GitHub</a></span>
+    $('updAvail').innerHTML = `<b>${esc(a.name || 'Version ' + a.version)}</b><span class="hint">signature checked ✓${a.published ? ' · ' + new Date(a.published).toLocaleDateString('en-GB') : ''} · <a href="${esc(a.url)}" target="_blank" rel="noopener" style="color:var(--s1)">on GitHub</a></span>
       <div class="notes">${esc(a.notes || 'No notes.')}</div>
       <div class="row"><input type="password" id="updPw" placeholder="Your password to confirm" autocomplete="current-password" style="flex:1;min-width:180px"><button id="updInstall">Install version ${esc(a.version)}</button></div><span class="status" id="updInstallStatus"></span>`;
     $('updInstall').onclick = async () => {
@@ -593,7 +594,7 @@ function renderUpdates(u) {
   $('updRefused').hidden = !ref.length;
   $('updRefused').innerHTML = ref.map((x) => `Can't be installed: ${esc(x.version)} – ${esc(x.reason)}`).join('<br>');
   setStatus($('updCheckStatus'), st.check_error ? 'err' : st.state === 'checking' || u.pending ? 'busy' : 'ok',
-    st.check_error ? '✕ ' + st.check_error : u.pending ? 'Request sent to the update service, it starts in a moment …' : st.state === 'checking' ? 'Checking …' : st.checked_at ? `Last checked: ${new Date(st.checked_at * 1000).toLocaleString()}${a ? '' : ' · up to date'}` : '');
+    st.check_error ? '✕ ' + st.check_error : u.pending ? 'Request sent to the update service, it starts in a moment …' : st.state === 'checking' ? 'Checking …' : st.checked_at ? `Last checked: ${new Date(st.checked_at * 1000).toLocaleString('en-GB')}${a ? '' : ' · up to date'}` : '');
 }
 async function pollUpdates(fast) {
   clearTimeout(updTimer);
@@ -737,13 +738,26 @@ $('saveNow').onclick = async () => {
   $('saveHint').textContent = 'Saved. The service restarts …';
   await afterSave(r, $('saveHint'));
 };
+// The server restarts after saving. Wait until a *new* process answers (its boot id changes), with a short
+// timeout per try so a proxy holding the request can't stall this, then continue by ourselves.
+async function health() {
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 2000);
+  try { const r = await fetch('/healthz', { cache: 'no-store', signal: ctl.signal }); return r.ok ? await r.json() : null; } catch { return null; } finally { clearTimeout(t); }
+}
 async function afterSave(r, statusEl) {
   const target = new URL(r.url, location.href);
-  for (let i = 0; i < 30; i++) {
-    await new Promise((res) => setTimeout(res, 1000));
-    try { if ((await fetch('/healthz', { cache: 'no-store' })).ok && i > 1) break; } catch (e) { /* still restarting */ }
+  for (let i = 0; i < 40; i++) {
+    await new Promise((res) => setTimeout(res, 750));
+    const h = await health();
+    if (h && h.boot && h.boot !== BOOT_AT_LOAD) break;
   }
   if (target.origin !== location.origin) {
+    // A new domain: go there as soon as it answers (Caddy may need a moment for the certificate).
+    statusEl.innerHTML = `Done. Moving to <a href="${esc(target.href)}login" style="color:var(--s1)">${esc(target.href)}</a> …`;
+    for (let i = 0; i < 20; i++) {
+      try { await fetch(target.href + 'healthz', { mode: 'no-cors', cache: 'no-store' }); location.href = target.href + 'login'; return; } catch { /* not yet */ }
+      await new Promise((res) => setTimeout(res, 1500));
+    }
     statusEl.innerHTML = `Done. Continue at <a href="${esc(target.href)}login" style="color:var(--s1)">${esc(target.href)}</a> (the certificate may take a moment on the first visit).`;
     return;
   }

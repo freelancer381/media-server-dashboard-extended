@@ -49,6 +49,7 @@ def xp_for(level):
     return 50 * (level - 1) ** 2
 
 
+OLD_GERMAN = re.compile(r"\b(hat|wurde|erreicht Level|bekommt das Abzeichen|sucht:|schaut|fertig geladen|importiert|geholt|Untertitel|wieder da|erledigt:|ist jetzt|Download fehlgeschlagen|installiert automatisch|angestoßen)\b|[äöüß]")
 CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 
 
@@ -64,7 +65,8 @@ class Live:
         self.game_file = os.path.join(data_dir, "game.json")
         self.enabled = enabled
         self.lock = threading.Lock()
-        self.events = deque(self._load(self.events_file, []), maxlen=keep)
+        # Feed lines saved before the interface became English (0.2.0) are left out.
+        self.events = deque([e for e in self._load(self.events_file, []) if not OLD_GERMAN.search(str(e.get("text", "")))], maxlen=keep)
         self.game = self._load(self.game_file, {}) or {}
         self.game.setdefault("players", {})
         self.game.setdefault("team", {"since": time.time(), "clean_since": time.time()})

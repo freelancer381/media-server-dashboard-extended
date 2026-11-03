@@ -48,6 +48,8 @@ try:
 except OSError:
     VERSION = "0.0.0-dev"
 os.makedirs(DATA, exist_ok=True)
+# Changes with every start: open pages reload once after a restart (saved settings, update) without F5.
+BOOT = str(int(time.time() * 1000))
 
 
 def load_config():
@@ -436,6 +438,7 @@ def read_arr(kind):
             "title": m.get("title"), "year": m.get("year"), "poster": poster(m), "size": m.get("sizeOnDisk", 0),
             "quality": ((m.get("movieFile") or {}).get("quality") or {}).get("quality", {}).get("name"),
             "when": (m.get("movieFile") or {}).get("dateAdded") or m.get("added"),
+            "open": open_link("movie", m.get("title"), m.get("year"), m.get("titleSlug")),
         } for m in have[:8]]
         library = {"total": len(items), "have": len(have), "size": sum(m.get("sizeOnDisk", 0) for m in items)}
     else:
@@ -445,6 +448,7 @@ def read_arr(kind):
             "sub": ep(h["episode"]) + " " + h["episode"].get("title", "") if h.get("episode") else "",
             "poster": poster(h.get("series") or {}),
             "quality": ((h.get("quality") or {}).get("quality") or {}).get("name"), "when": h.get("date"),
+            "open": open_link("show", (h.get("series") or {}).get("title") or "", (h.get("series") or {}).get("year"), (h.get("series") or {}).get("titleSlug")),
         } for h in slow["history"].get("records", [])]
         library = {"total": len(items), "have": sum(stat(s, "episodeFileCount") for s in items), "episodes": sum(stat(s, "episodeCount") for s in items), "size": sum(stat(s, "sizeOnDisk") for s in items)}
 
@@ -474,6 +478,85 @@ def read_arr(kind):
         "health": [{"level": h.get("type"), "message": h.get("message")} for h in slow["health"]],
         "roots": [{"path": r.get("path"), "ok": r.get("accessible", True)} for r in slow["roots"]],
     }
+
+
+# ---------- posters open the title in Plex or Jellyfin (or in Radarr/Sonarr) ----------
+def open_link(kind, title, year, slug):
+    q = {"kind": kind, "title": title or ""}
+    if year:
+        q["year"] = year
+    if slug:
+        q["slug"] = slug
+    return "/api/open?" + urllib.parse.urlencode(q)
+
+
+def media_server():
+    """The Plex or Jellyfin set up as a custom app (the wizard's presets), if any: (kind, app)."""
+    for a in APPS:
+        if a["kind"] != "generic":
+            continue
+        tag = (a["auth_name"] + " " + a["name"]).lower()
+        if "x-plex-token" in tag or "plex" in a["name"].lower():
+            return "plex", a
+    for a in APPS:
+        tag = (a["auth_name"] + " " + a["name"]).lower()
+        if a["kind"] == "generic" and ("x-emby-token" in tag or "jellyfin" in tag or "emby" in tag):
+            return "jellyfin", a
+    return None, None
+
+
+open_cache = {}
+
+
+def find_in_media_server(kind, title, year):
+    """The web address of a movie or show in Plex/Jellyfin, or None."""
+    ms, a = media_server()
+    if not a or not title:
+        return None
+    key = (ms, kind, title.lower(), str(year or ""))
+    hit = open_cache.get(key)
+    if hit and time.time() - hit[0] < 1800:
+        return hit[1]
+    web = a["web_url"].rstrip("/")
+    good_year = lambda y: not year or not y or abs(int(y) - int(year)) <= 1
+    url = None
+    if ms == "plex":
+        ident = app_get(a, "/identity")
+        mid = (ident.get("MediaContainer") or {}).get("machineIdentifier")
+        found = app_get(a, "/search?" + urllib.parse.urlencode({"query": title, "limit": 20}))
+        want = "movie" if kind == "movie" else "show"
+        items = (found.get("MediaContainer") or {}).get("Metadata") or []
+        match = next((m for m in items if m.get("type") == want and m.get("title", "").lower() == title.lower() and good_year(m.get("year"))), None) \
+            or next((m for m in items if m.get("type") == want and good_year(m.get("year"))), None)
+        if mid and match:
+            url = f"{web}/web/index.html#!/server/{mid}/details?key=" + urllib.parse.quote(f"/library/metadata/{match['ratingKey']}", safe="")
+    else:
+        info = app_get(a, "/System/Info/Public")
+        found = app_get(a, "/Items?" + urllib.parse.urlencode({"searchTerm": title, "Recursive": "true", "Limit": 20,
+                                                                 "IncludeItemTypes": "Movie" if kind == "movie" else "Series"}))
+        items = found.get("Items") or []
+        match = next((m for m in items if m.get("Name", "").lower() == title.lower() and good_year(m.get("ProductionYear"))), None) \
+            or next((m for m in items if good_year(m.get("ProductionYear"))), None)
+        if match:
+            url = f"{web}/web/#/details?id={match['Id']}&serverId={info.get('Id', '')}"
+    open_cache[key] = (time.time(), url)
+    return url
+
+
+def open_target(kind, title, year, slug):
+    try:
+        url = find_in_media_server(kind, title, year)
+    except FAIL:
+        url = None
+    if url:
+        return url
+    arr = BY_KIND.get("radarr" if kind == "movie" else "sonarr")
+    if arr and slug and re.fullmatch(r"[a-z0-9-]+", slug):
+        return f"{arr['web_url']}/{'movie' if kind == 'movie' else 'series'}/{slug}"
+    ms, a = media_server()
+    if ms == "plex":
+        return f"{a['web_url']}/web/index.html#!/search?query=" + urllib.parse.quote(title or "")
+    return None
 
 
 def read_radarr():
@@ -834,7 +917,7 @@ def current_payload():
     """The page data, worked out at most once a second however many pages are open."""
     with payload_lock:
         if time.time() - payload_cache["at"] > 1:
-            payload_cache["body"] = demo.payload(TITLE, VERSION) if DEMO else payload()
+            payload_cache["body"] = demo.payload(TITLE, VERSION, BOOT) if DEMO else payload()
             payload_cache["at"] = time.time()
         return payload_cache["body"]
 
@@ -875,7 +958,7 @@ def payload():
     return json.dumps({
         "title": TITLE, "now": int(time.time() * 1000), "alerts": issues, "history": {k: list(v) for k, v in history.items()},
         "upcoming": upcoming, **body, "services": services, "sab": sab, "home": home_payload(),
-        "version": VERSION, "update": update_brief(),
+        "version": VERSION, "boot": BOOT, "update": update_brief(),
     })
 
 
@@ -928,9 +1011,32 @@ def check_notice():
         notice.update(version=v, url=rel.get("html_url") or "", name=rel.get("name") or v)
 
 
+# Update services installed before 0.2.1 write German step names and messages; show them in English.
+OLD_UPDATER_WORDS = [
+    ("Release prüfen", "Check release"), ("Signatur prüfen", "Check signature"), ("Herunterladen", "Download"), ("Sicherung", "Back up"),
+    ("Entpacken", "Unpack"), ("Umschalten", "Switch over"), ("Neustart", "Restart"), ("Gesundheitscheck", "Health check"), ("Aufräumen", "Clean up"),
+    ("angefragt von", "requested by"), ("Signatur gültig: release.json stammt vom Release-Workflow", "Signature valid: release.json comes from the release workflow"),
+    ("geladen", "downloaded"), ("SHA-256 stimmt", "SHA-256 matches"), ("läuft wieder", "is running again"), ("läuft", "is running"), ("Fertig", "Done"),
+    ("Abgelehnt", "Refused"), ("Es wurde nichts geändert", "Nothing was changed"), ("Fehler", "Error"), ("Signatur ungültig", "invalid signature"),
+    ("ist nicht neuer als", "is not newer than"), ("Zurück auf", "Back to"), ("ignoriert", "ignored"),
+]
+
+
+def english(value):
+    if isinstance(value, str):
+        for de, en in OLD_UPDATER_WORDS:
+            value = value.replace(de, en)
+        return value
+    if isinstance(value, list):
+        return [english(v) for v in value]
+    if isinstance(value, dict):
+        return {k: english(v) for k, v in value.items()}
+    return value
+
+
 def update_info():
     conf = updater_conf()
-    st = update_status()
+    st = english(update_status())
     return {
         "managed": bool(conf), "mode": MODE or ("lxc" if conf else "manual"), "notice": dict(notice) or None, "version": VERSION, "repo": (conf or {}).get("repo"), "channel": (conf or {}).get("channel", "stable"),
         "auto": bool(settings_updates().get("auto")), "hour": int(settings_updates().get("hour", 4)), "status": st,
@@ -1338,7 +1444,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def page(self, name):
         with open(os.path.join(HERE, name), "rb") as f:
-            body = f.read().replace(b"{{TITLE}}", html.escape(TITLE).encode()).replace(b"{{VERSION}}", html.escape(VERSION).encode())
+            body = f.read().replace(b"{{TITLE}}", html.escape(TITLE).encode()).replace(b"{{VERSION}}", html.escape(VERSION).encode()).replace(b"{{BOOT}}", BOOT.encode())
             self.reply(200, body, "text/html; charset=utf-8")
 
     def json(self, code, obj):
@@ -1347,7 +1453,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split("?")[0]
         if path == "/healthz":
-            return self.json(200, {"ok": True, "version": VERSION})
+            return self.json(200, {"ok": True, "version": VERSION, "boot": BOOT})
         if path == "/setup":
             return self.page("setup.html") if self.authed() or not SETUP_DONE else self.redirect("/login")
         if path == "/setup/config":
@@ -1364,6 +1470,13 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, current_payload().encode(), "application/json")
         if path == "/api/stream":
             return self.stream() if self.authed() else self.reply(401, b"Login needed", "text/plain")
+        if path == "/api/open":
+            if not self.authed():
+                return self.redirect("/login")
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            g = lambda k: (q.get(k) or [""])[0][:200]
+            target = open_target("movie" if g("kind") == "movie" else "show", g("title"), g("year") if g("year").isdigit() else "", g("slug"))
+            return self.redirect(target) if target else self.reply(404, b"Not found in Plex, Jellyfin, Radarr or Sonarr", "text/plain")
         if path == "/api/update":
             return self.json(200, update_info()) if self.authed() else self.json(401, {"error": "sign-in needed"})
         if DEMO and path.startswith("/demo-poster/"):
@@ -1412,7 +1525,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             send = lambda name, data: self.wfile.write(f"event: {name}\ndata: {data}\n\n".encode()) or self.wfile.flush()
             self.wfile.write(b"retry: 2000\n\n")  # reconnect quickly after a restart
-            send("hello", json.dumps({"events": LIVE.recent(), "game": LIVE.summary(), "version": VERSION}, ensure_ascii=False))
+            send("hello", json.dumps({"events": LIVE.recent(), "game": LIVE.summary(), "version": VERSION, "boot": BOOT}, ensure_ascii=False))
             send("data", current_payload())
             while True:
                 try:

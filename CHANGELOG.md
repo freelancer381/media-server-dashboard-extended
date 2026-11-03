@@ -5,6 +5,13 @@ becomes its GitHub release text, so write it for the people who run the dashboar
 
 ## Unreleased
 
+- Office: when the Proxmox host can't be reached, the server catches fire and the staff run around shouting; they calm down and go back when it answers again.
+- Posters on the dashboard and in the office open the title in Plex or Jellyfin (set up as a custom app), otherwise in Radarr or Sonarr.
+- Live feed: dismiss single messages or clear them all, in the office and in a new Live card on the dashboard; dashboard warnings can be dismissed until the problem comes back.
+- After saving the settings or finishing the setup, the page and every open dashboard or office tab reload by themselves once the server is back (no more F5).
+- No more German leftovers: old feed lines from before 0.2.1 are dropped, an older update service's messages show in English, dates and times use an English format.
+- The update service now updates itself from verified releases.
+
 ## 0.3.0 - 2026-11-02
 
 - NZBGet as a download client next to SABnzbd (JSON-RPC with user and password), with an extension for instant live-feed messages.
