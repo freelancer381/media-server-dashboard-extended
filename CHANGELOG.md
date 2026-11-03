@@ -5,6 +5,8 @@ becomes its GitHub release text, so write it for the people who run the dashboar
 
 ## Unreleased
 
+## 0.3.5 - 2026-11-03
+
 Security (second audit):
 - Saved API keys and the Proxmox token were reused for a changed address, so an open session could send them to any server (connection test or saving). They are now only reused for the same server; a new address needs them again.
 - Sessions are known to the server: each sign-in gets its own, signing out ends it on the server, a new password ends all of them, "Sign out everywhere" in the account settings, and they expire after 30 days unused (180 at most). Open live streams close when their session ends.
