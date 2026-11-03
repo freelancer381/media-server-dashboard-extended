@@ -38,6 +38,13 @@ Python standard library only, no build step, no accounts, no analytics.
 Then open `http://<address>/setup`, enter the **setup token** (the installer prints it; with Docker it is
 in the log) and go through the wizard.
 
+**Behind your own reverse proxy** (Nginx Proxy Manager, Traefik, Synology …), point it at:
+
+| Install | Forward to | More |
+|---|---|---|
+| Proxmox LXC | `http://<container IP>:80` (Caddy; the dashboard itself only listens on 127.0.0.1:8900) | choose "Behind my own reverse proxy" in the wizard, [docs/proxmox.md](docs/proxmox.md#behind-nginx-proxy-manager-or-another-proxy) |
+| Docker / Synology | `http://<Docker host>:8900` (the published port), or `http://media-server-dashboard:8900` on a shared Docker network | set `MSD_TRUSTED_PROXIES`, [docs/docker.md](docs/docker.md#behind-a-reverse-proxy-https) |
+
 To just try it with made-up data:
 
 ```bash

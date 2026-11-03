@@ -118,7 +118,7 @@ nav button.dirty::after { content: ' •'; color: #9cc4ff; }
     <p>How should the dashboard be reached?</p>
     <div class="radio">
       <label class="check"><input type="radio" name="addr" value="ip"><span>By IP address only<small id="ipHint">http://&lt;container IP&gt;</small></span></label>
-      <label class="check"><input type="radio" name="addr" value="proxy"><span>Behind my own reverse proxy<small>Nginx Proxy Manager, Traefik, a Synology proxy … does the domain and HTTPS. Point it at <b id="proxyTarget">http://&lt;container IP&gt;:80</b>.</small></span></label>
+      <label class="check"><input type="radio" name="addr" value="proxy"><span>Behind my own reverse proxy<small>Nginx Proxy Manager, Traefik, a Synology proxy … does the domain and HTTPS. <span id="proxyHow">Point it at <b id="proxyTarget">http://&lt;container IP&gt;:80</b>.</span></small></span></label>
       <label class="check"><input type="radio" name="addr" value="domain"><span>Your own domain, HTTPS from this server<small>No other proxy in front: this server gets the certificate itself (e.g. dashboard.example.com or dashboard.home.lan).</small></span></label>
     </div>
     <div id="domainBox" class="body" hidden>
@@ -649,7 +649,7 @@ function load(c) {
   $('sessionsRow').hidden = !c.setup_done;
   $('pwHint').innerHTML = c.setup_done ? '<span class="hint">(leave empty to keep it)</span>' : '';
   document.querySelector(`input[name=addr][value=${c.behind_proxy ? 'proxy' : c.domain ? 'domain' : 'ip'}]`).checked = true;
-  $('proxyTarget').textContent = `http://${c.lan || '<container IP>'}:${c.caddy ? 80 : c.port}`;
+  $('proxyHow').innerHTML = proxyHow(c);
   document.querySelector(`input[name=tls][value=${c.tls === 'internal' ? 'internal' : 'public'}]`).checked = true;
   $('domain').value = c.domain;
   $('ipAccess').checked = c.ip_access !== false;
@@ -687,6 +687,15 @@ function load(c) {
   if (c.setup_done && c.updates) renderUpdates(c.updates);
 }
 
+// Where the user's own proxy has to send visitors. The LXC has Caddy on port 80 in front of the dashboard;
+// in Docker it is the port published on the Docker host (8900 unless changed), not the container's IP.
+const proxyTarget = (c) => c.caddy ? `http://${c.lan || '<container IP>'}:80` : c.docker ? `http://<Docker host>:${c.port}` : `http://${c.lan || '<this server>'}:${c.port}`;
+function proxyHow(c) {
+  const to = `Point it at <b>${esc(proxyTarget(c))}</b>`;
+  if (c.caddy) return `${to} (Caddy in this container, not 8900).`;
+  if (c.docker) return `${to} (the port you published, 8900 unless changed; or the service name on a shared Docker network), and set <code>MSD_TRUSTED_PROXIES</code> to the address the proxy connects from.`;
+  return `${to}.`;
+}
 function collect() {
   const apps = {};
   document.querySelectorAll('#builtinApps .app').forEach((el) => {
@@ -713,7 +722,7 @@ function renderSummary() {
   const on = Object.entries(d.apps).filter(([, a]) => a.enabled).map(([k]) => cfg.builtin[k].name).concat(d.custom_apps.map((a) => a.name || '(no name)'));
   const rows = [
     ['Title', d.title || 'Media Server Dashboard'], ['User', d.user], ['Password', d.password ? 'new' : 'unchanged'],
-    ['Address', d.behind_proxy ? `behind your proxy${d.domain ? ' · https://' + d.domain : ''} → http://IP:80` : d.domain ? `https://${d.domain} (${d.tls === 'internal' ? 'internal CA' : "Let's Encrypt"})${d.ip_access ? ' + http://IP' : ''}` : 'http://IP'],
+    ['Address', d.behind_proxy ? `behind your proxy${d.domain ? ' · https://' + d.domain : ''} → ${proxyTarget(cfg)}` : d.domain ? `https://${d.domain} (${d.tls === 'internal' ? 'internal CA' : "Let's Encrypt"})${d.ip_access ? ' + http://IP' : ''}` : 'http://IP'],
     ['Proxmox', d.proxmox.url ? `${d.proxmox.url} · Node ${d.proxmox.node}` : 'not connected'],
     ['Storages', d.proxmox.url ? (d.storages.join(', ') || 'all') : '–'], ['Watched guests', d.watch_guests.join(', ') || '–'],
     ['Apps', on.join(', ') || 'none'],

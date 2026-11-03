@@ -5,6 +5,9 @@ becomes its GitHub release text, so write it for the people who run the dashboar
 
 ## Unreleased
 
+Fixed:
+- Setup wizard: "Behind my own reverse proxy" told Docker installs to forward to port 80, which only applies to the Proxmox LXC (Caddy). In Docker it now says the published port (8900) and to set `MSD_TRUSTED_PROXIES`; the README has a table for both.
+
 Changed:
 - Office: the view goes down to almost level and zooms in further, towards the pointer, so the boards and posters on the walls can be read up close. Move it with the right mouse button or two fingers; "Reset view" brings back the whole room.
 - Office: more to do on a break. A table football table, a reading corner with two armchairs, and the two bean bags that were only furniture so far. Everyone on a break gets a spot of their own, and the games are only played in pairs: nobody plays ping pong alone any more. When a partner goes back to work, the other one finds a seat.

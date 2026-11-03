@@ -1389,7 +1389,7 @@ def public_config():
     return {
         "setup_done": SETUP_DONE, "demo": DEMO, "title": TITLE, "user": AUTH.get("user", ""),
         "domain": c.get("domain", ""), "tls": c.get("tls", "public"), "ip_access": c.get("ip_access", True), "behind_proxy": bool(c.get("behind_proxy")),
-        "caddy": bool(c.get("caddy_site_file") or c.get("caddy_managed")), "lan": state["network"].get("lan", ""), "port": PORT,
+        "caddy": bool(c.get("caddy_site_file") or c.get("caddy_managed")), "lan": state["network"].get("lan", ""), "port": PORT, "docker": MODE == "docker",
         "proxmox": {"url": p.get("url", ""), "node": p.get("node", ""), "token_id": p.get("token_id", ""), "has_secret": bool(p.get("token_secret")),
                     "verify_tls": p.get("verify_tls", True), "ca_file": p.get("ca_file", "")},
         "storages": STORAGES, "watch_guests": WATCH_GUESTS,
