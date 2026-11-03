@@ -166,6 +166,7 @@ function bytes(b, digits = 1) {
   return (i < 2 ? Math.round(n) : n.toFixed(digits)) + ' ' + u[i];
 }
 const rate = (b) => bytes(b) + '/s';
+const total = (b) => b == null ? '–' : bytes(b);  // qBittorrent keeps no per-day numbers
 function span(sec) {
   const d = Math.floor(sec / 86400), h = Math.floor(sec / 3600) % 24, m = Math.floor(sec / 60) % 60;
   return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`;
@@ -356,8 +357,8 @@ function render(d) {
   put('cinema', cin.watched ? `<h3>Open right now</h3>${rows(cin.streams, (t) => `<li><span class="t" title="${esc(t.title)}">${esc(t.title)}</span><span class="m">${t.who ? `${who(t.who)}${t.pct}%` : esc(t.service || 'Unknown')}</span></li>`, 'Nothing is playing')}
     <h3>Latest watched</h3>${rows(cin.watched, (w) => `<li><span class="t" title="${esc(w.title)}">${esc(w.title)}</span><span class="m">${who(w.who)}${w.pct}% · ${esc(ago(w.when))}</span></li>`, 'Nothing watched yet')}` : '<div class="empty">Reading…</div>');
 
-  put('queue', sab.off ? '<div class="empty">No download client set up</div>' : !sab.ok ? `<div class="empty">${esc(sab.client || 'The download client')} is not responding</div>` : `<div class="tiles">${tile(bytes(sab.totals.day), 'Today')}${tile(bytes(sab.totals.week), 'This week')}${tile(bytes(sab.totals.month), 'This month')}${tile(bytes(sab.totals.total), 'All time')}</div>
-    <h3>In ${esc(sab.client || 'SABnzbd')}</h3>${rows(sab.queue.slice(0, 8), (q) => `<li><span class="t" title="${esc(q.title)}">${esc(q.title)}</span><span class="m">${Math.round(q.pct)}% · ${esc(q.left)}</span></li>`, 'Queue is empty')}`);
+  put('queue', sab.off ? '<div class="empty">No download client set up</div>' : !sab.ok ? `<div class="empty">${esc(sab.client || 'The download client')} is not responding</div>` : `<div class="tiles">${tile(total(sab.totals.day), 'Today')}${tile(total(sab.totals.week), 'This week')}${tile(total(sab.totals.month), 'This month')}${tile(total(sab.totals.total), 'All time')}</div>
+    <h3>In ${esc(sab.client || 'SABnzbd')}</h3>${rows(sab.queue.slice(0, 8), (q) => `<li><span class="t" title="${esc(q.title)}${q.client ? ' · ' + esc(q.client) : ''}">${esc(q.title)}</span><span class="m">${Math.round(q.pct)}%${q.left ? ' · ' + esc(q.left) : ''}</span></li>`, 'Queue is empty')}`);
 
   const R = d.radarr, S = d.sonarr;
   put('radarrSum', R.off ? pill('', 'Not set up') : R.ok ? esc(`${num(R.library.have)} of ${num(R.library.total)} on disk · ${bytes(R.library.size)} · ${num(R.missing)} missing`) : pill('error', 'Radarr down'));

@@ -169,7 +169,7 @@ nav button.dirty::after { content: ' •'; color: #9cc4ff; }
       <select id="preset" aria-label="Preset">
         <option value="lidarr">Lidarr</option><option value="readarr">Readarr</option><option value="whisparr">Whisparr</option>
         <option value="seerr">Jellyseerr / Overseerr</option><option value="jellyfin">Jellyfin</option><option value="plex">Plex</option>
-        <option value="tautulli">Tautulli</option><option value="qbit">qBittorrent</option><option value="arr">Other *arr app</option><option value="generic">Other tool</option>
+        <option value="tautulli">Tautulli</option><option value="arr">Other *arr app</option><option value="generic">Other tool</option>
       </select>
       <button class="ghost" id="addCustom">+ Add</button>
     </div>
@@ -258,7 +258,6 @@ const PRESETS = {
   jellyfin: { name: 'Jellyfin', kind: 'generic', auth: 'header', auth_name: 'X-Emby-Token', health_path: '/System/Info', port: 8096 },
   plex: { name: 'Plex', kind: 'generic', auth: 'query', auth_name: 'X-Plex-Token', health_path: '/identity', port: 32400 },
   tautulli: { name: 'Tautulli', kind: 'generic', auth: 'query', auth_name: 'apikey', health_path: '/api/v2?cmd=status', port: 8181 },
-  qbit: { name: 'qBittorrent', kind: 'generic', auth: 'none', health_path: '/', port: 8080 },
   arr: { name: '', kind: 'arr', api_version: 'v1' },
   generic: { name: '', kind: 'generic', auth: 'header', auth_name: 'X-Api-Key', health_path: '/' },
 };
@@ -380,7 +379,11 @@ const checked = (box) => [...$(box).querySelectorAll('input:checked')].map((i) =
 
 // ---------- apps ----------
 function builtinCard(key, b, a) {
-  const nzb = key === 'nzbget';  // NZBGet signs in with user and password instead of an API key
+  // NZBGet, qBittorrent and rdtclient sign in with user and password instead of an API key.
+  const LOGIN_HINTS = { nzbget: ['Settings → Security → ControlUsername', 'ControlPassword'],
+    qbittorrent: ['Tools → Options → Web UI; empty if the dashboard is in "Bypass authentication"', 'Web UI password'],
+    rdtclient: ['the user you sign in to rdtclient with', 'its password'] };
+  const nzb = LOGIN_HINTS[key];
   const el = document.createElement('div');
   el.className = 'app' + (a.enabled ? '' : ' off');
   el.dataset.key = key;
@@ -388,8 +391,8 @@ function builtinCard(key, b, a) {
     <div class="body">
       <div class="grid2">
         <label>URL<input type="url" class="url" value="${esc(a.url)}" placeholder="http://192.168.1.x:${b.port}"></label>
-        ${nzb ? `<label>Username <span class="hint">(Settings → Security → ControlUsername)</span><input type="text" class="user" value="${esc(a.username || '')}" autocomplete="off" spellcheck="false"></label>` : ''}
-        <label>${nzb ? 'Password <span class="hint">(ControlPassword)</span>' : 'API key'} ${a.has_key ? '<span class="hint">(saved – leave empty to keep it for this address)</span>' : ''}<input type="password" class="key" autocomplete="off"></label>
+        ${nzb ? `<label>Username <span class="hint">(${nzb[0]})</span><input type="text" class="user" value="${esc(a.username || '')}" autocomplete="off" spellcheck="false"></label>` : ''}
+        <label>${nzb ? `Password <span class="hint">(${nzb[1]})</span>` : 'API key'} ${a.has_key ? '<span class="hint">(saved – leave empty to keep it for this address)</span>' : ''}<input type="password" class="key" autocomplete="off"></label>
       </div>
       <label>Open in the browser at <span class="hint">(optional, if not the URL above; clicking the worker in the office opens it)</span><input type="url" class="web" value="${esc(a.web_url || '')}" placeholder="https://radarr.home.lan"></label>
       <div class="row"><label class="check"><input type="checkbox" class="verify" ${a.verify_tls !== false ? 'checked' : ''}> Check the certificate (https)</label>
@@ -503,7 +506,7 @@ function tileCard(t) {
   return el;
 }
 $('addTile').onclick = () => { const el = tileCard({}); $('tiles').append(el); el.querySelector('.name').focus(); };
-const APP_ICONS = { Radarr: '🎬', Sonarr: '📺', Prowlarr: '🔎', Bazarr: '💬', SABnzbd: '📥', NZBGet: '📥', Lidarr: '🎵', Readarr: '📚', Whisparr: '🔞', Jellyfin: '🍿', Plex: '🎞️', Jellyseerr: '🙋', Tautulli: '📊', qBittorrent: '🌊' };
+const APP_ICONS = { Radarr: '🎬', Sonarr: '📺', Prowlarr: '🔎', Bazarr: '💬', SABnzbd: '📥', NZBGet: '📥', Lidarr: '🎵', Readarr: '📚', Whisparr: '🔞', Jellyfin: '🍿', Plex: '🎞️', Jellyseerr: '🙋', Tautulli: '📊', qBittorrent: '🌊', rdtclient: '🧲' };
 $('tilesFromApps').onclick = () => {
   const have = new Set([...document.querySelectorAll('#tiles .tile')].map((el) => el.read().name.toLowerCase()));
   const list = [...document.querySelectorAll('#builtinApps .app')].filter((el) => el.querySelector('.on').checked)
@@ -527,6 +530,8 @@ const HOOK_APPS = [
   ['Readarr', 'Settings → Connect → + → Webhook.'],
   ['Bazarr', 'Settings → Notifications → add an Apprise URL (json:// instead of http://, jsons:// instead of https://).', true],
   ['SABnzbd', 'Config → Notifications → enable Apprise, enter the URL (json:// or jsons://), tick "Job finished" and "Job failed".', true],
+  ['qBittorrent', 'Not needed: the dashboard notices finished and failed torrents by itself.'],
+  ['rdtclient', 'Not needed: the dashboard notices finished and failed downloads by itself.'],
   ['NZBGet', 'NZBGet has no webhooks of its own: copy extras/nzbget/DashboardNotify.py into its scripts folder, enable it under Extension scripts and paste this URL as its WebhookUrl. Without it the dashboard still notices finished downloads.'],
   ['Jellyfin', 'Plugin "Webhook" → Generic Destination (template below).'],
 ];

@@ -17,6 +17,7 @@ import hmac
 import ipaddress
 import html
 import http.cookies
+import itertools
 import json
 import os
 import queue
@@ -101,7 +102,15 @@ BUILTIN = {
     "bazarr": {"name": "Bazarr", "kind": "bazarr", "api": "", "port": 6767},
     "sabnzbd": {"name": "SABnzbd", "kind": "sabnzbd", "api": "", "port": 8080},
     "nzbget": {"name": "NZBGet", "kind": "nzbget", "api": "", "port": 6789},
+    # rdtclient (Real-Debrid / AllDebrid) speaks qBittorrent's Web API, so one reader covers both.
+    "qbittorrent": {"name": "qBittorrent", "kind": "qbittorrent", "api": "", "port": 8080},
+    "rdtclient": {"name": "rdtclient", "kind": "qbittorrent", "api": "", "port": 6500},
 }
+# The download clients. Any number of them may be set up; the download card, graph and the office's parcel
+# pile show them together (state["sab"]), each one's own state is in dl_state.
+DL_KEYS = ("sabnzbd", "nzbget", "qbittorrent", "rdtclient")
+# These sign in with user and password, and may run without one (qBittorrent's "bypass for localhost/subnets").
+LOGIN_KEYS = ("nzbget", "qbittorrent", "rdtclient")
 
 
 def make_app(key, a, base=None):
@@ -115,7 +124,7 @@ def make_app(key, a, base=None):
         "auth": a.get("auth") or ("query" if base.get("kind") == "sabnzbd" else "header"),
         "auth_name": a.get("auth_name") or ("X-API-KEY" if base.get("kind") == "bazarr" else "X-Api-Key"),
         "health_path": a.get("health_path") or "/",
-        "username": a.get("username") or "",  # NZBGet signs in with user and password
+        "username": a.get("username") or "",  # NZBGet and qBittorrent sign in with user and password
         # Where the app's own web interface opens from the office (the API address unless set separately).
         "web_url": (a.get("web_url") or url).rstrip("/"),
     }
@@ -125,8 +134,8 @@ def configured_apps(cfg):
     apps = []
     for key, base in BUILTIN.items():
         a = (cfg.get("apps") or {}).get(key) or {}
-        # NZBGet may run without a password; every other app needs its API key.
-        if a.get("url") and (a.get("api_key") or key == "nzbget") and a.get("enabled", True):
+        # NZBGet and qBittorrent may run without a password; every other app needs its API key.
+        if a.get("url") and (a.get("api_key") or key in LOGIN_KEYS) and a.get("enabled", True):
             apps.append(make_app(key, a, base))
     for i, a in enumerate(cfg.get("custom_apps") or []):
         if a.get("url") and a.get("name") and a.get("enabled", True):
@@ -135,11 +144,9 @@ def configured_apps(cfg):
 
 
 APPS = configured_apps(CONFIG)
-BY_KIND = {a["kind"]: a for a in APPS if a["kind"] in BUILTIN}
-# The download client the dashboard's download card, graph and the office's parcel pile follow:
-# SABnzbd if it is set up, otherwise NZBGet. Its state lives in state["sab"] either way.
-DOWNLOADER = BY_KIND.get("sabnzbd") or BY_KIND.get("nzbget")
-DL_NAME = DOWNLOADER["name"] if DOWNLOADER else "SABnzbd"
+BY_KIND = {a["key"]: a for a in APPS if a["key"] in BUILTIN}  # the built-in apps by their key (= kind, except rdtclient)
+DOWNLOADERS = [BY_KIND[k] for k in DL_KEYS if k in BY_KIND]
+DL_NAMES = {a["name"] for a in DOWNLOADERS}
 
 VENDOR = {"/vendor/three.module.min.js": "three.module.min.js", "/vendor/OrbitControls.js": "OrbitControls.js", "/vendor/RoundedBoxGeometry.js": "RoundedBoxGeometry.js"}  # the 3D office's library, served as-is
 POSTER_HOSTS = ("https://image.tmdb.org/", "https://artworks.thetvdb.com/")
@@ -156,9 +163,10 @@ state = {"system": {}, "services": [], "cinema": {"enabled": False, "profiles": 
          "sab": {"ok": False}, "radarr": {"ok": False}, "sonarr": {"ok": False}, "prowlarr": {"ok": False}, "bazarr": {"ok": False},
          "custom": {}, "activity": {}, "network": {}, "disks": [], "proxmox": {"ok": None, "guests": []}}
 for _k in BUILTIN:  # apps that aren't set up say so, instead of looking broken
-    if _k not in BY_KIND and _k not in ("sabnzbd", "nzbget"):
+    if _k not in BY_KIND and _k not in DL_KEYS:
         state[_k] = {"ok": False, "off": True}
-state["sab"] = {"ok": False, "off": not DOWNLOADER, "client": DL_NAME}
+dl_state = {}  # download client key -> its own state, in the shape of state["sab"]
+state["sab"] = {"ok": False, "off": not DOWNLOADERS, "client": " + ".join(a["name"] for a in DOWNLOADERS) or "SABnzbd"}
 
 
 # ---------- HTTP ----------
@@ -671,15 +679,24 @@ def read_activity():
     download_owner.update(owner)
 
 
+def dl_named(name):
+    """One download client's own state, by its name."""
+    return next((s for k, s in dl_state.items() if BY_KIND.get(k, {}).get("name") == name), {})
+
+
 def up_next(name, n=5):
-    """The next downloads in the download client's order, for the popup on a service box. Radarr and Sonarr get only their own."""
-    if name not in (DL_NAME, "Radarr", "Sonarr"):
+    """The next downloads, for the popup on a service box: a download client's own queue in its order,
+    or for Radarr and Sonarr their own downloads across all download clients."""
+    if name in DL_NAMES:
+        sab = dl_named(name)
+    elif name in ("Radarr", "Sonarr"):
+        sab = state["sab"]
+    else:
         return []
-    sab = state["sab"]
     out = []
     for s in sab.get("queue", []) if sab.get("ok") else []:
         sid = (s.get("id") or "").lower()
-        if name != DL_NAME and download_owner.get(sid) != name:
+        if name not in DL_NAMES and download_owner.get(sid) != name:
             continue
         out.append({"title": download_titles.get(sid) or tidy(s["title"]), "pct": round(s["pct"]), "size": s.get("size")})
         if len(out) == n:
@@ -709,8 +726,8 @@ def tidy(name):
 
 def activity(name):
     """The task an app is busy with, or None when it has nothing to do."""
-    if name == DL_NAME:
-        sab = state["sab"]
+    if name in DL_NAMES:
+        sab = dl_named(name)
         if not sab.get("ok") or sab["paused"] or not (sab["speed"] > 0 or sab["queueTotal"]):
             return None
         top = sab["queue"][0] if sab["queue"] else None
@@ -721,12 +738,39 @@ def activity(name):
     return state["activity"].get(name)
 
 
-sab_seen = None  # the queue at the last look: id -> name
+dl_seen = {}  # download client key -> its queue at the last look: id -> name
 
 
-def sab_seen_set(ids):
-    global sab_seen
-    sab_seen = ids
+def dl_done(a, st):
+    """One download client's new state, and the combined one for the download card."""
+    dl_state[a["key"]] = st
+    merge_downloads()
+
+
+def merge_downloads():
+    parts = [dl_state.get(a["key"]) or {"ok": False, "client": a["name"]} for a in DOWNLOADERS]
+    if len(parts) < 2:
+        if parts:
+            state["sab"] = parts[0]
+        return
+    name = " + ".join(p["client"] for p in parts)
+    up = [p for p in parts if p.get("ok")]
+    if not up:
+        state["sab"] = {"ok": False, "client": name}
+        return
+    speed, left = sum(p["speed"] for p in up), sum(p["left"] for p in up)
+    totals = {}
+    for k in ("day", "week", "month", "total"):
+        known = [p["totals"][k] for p in up if p["totals"].get(k) is not None]
+        totals[k] = sum(known) if known else None
+    # Taking turns, so the first rows show what every client is busy with, not one client's whole queue.
+    queue = [q for row in itertools.zip_longest(*[[{**q, "client": p["client"]} for q in p["queue"]] for p in up]) for q in row if q]
+    state["sab"] = {
+        "ok": True, "client": name, "version": None, "paused": all(p["paused"] for p in up),
+        "speed": speed, "left": left, "eta": clock(left / speed) if speed and left else "",
+        "queueTotal": sum(p["queueTotal"] for p in up), "queue": queue[:120],
+        "failed": sum(p["failed"] for p in up), "totals": totals,
+    }
 
 
 def read_sab():
@@ -738,11 +782,12 @@ def read_sab():
         failed = app_get(a, "history&limit=1&failed_only=1")["history"].get("noofslots", 0)
         st = app_get(a, "server_stats")
     except FAIL:
-        state["sab"] = {"ok": False, "client": a["name"]}
+        dl_done(a, {"ok": False, "client": a["name"]})
         return
     num = lambda v: float(v or 0)
+    seen = dl_seen.get(a["key"])
     ids = {s.get("nzo_id"): html.unescape(s.get("filename") or "") for s in q.get("slots", []) if s.get("nzo_id")}
-    gone = [i for i in sab_seen if i not in ids] if sab_seen is not None else []
+    gone = [i for i in seen if i not in ids] if seen is not None else []
     if gone and not LIVE.hooked(a["name"]):
         try:
             slots = app_get(a, "history&limit=30")["history"].get("slots", [])
@@ -753,20 +798,20 @@ def read_sab():
             h = done.get(i)
             if not h:
                 continue
-            name = download_titles.get(i.lower()) or tidy(h.get("name") or sab_seen[i])
+            name = download_titles.get(i.lower()) or tidy(h.get("name") or seen[i])
             if h.get("status") == "Completed":
                 LIVE.emit(a["name"], "download", f"finished downloading {name}", "success")
             elif h.get("status") == "Failed":
                 LIVE.emit(a["name"], "error", f"download failed: {name} ({livemod.clean(h.get('fail_message'), 120)})", "error")
-    sab_seen_set(ids)
-    state["sab"] = {
+    dl_seen[a["key"]] = ids
+    dl_done(a, {
         "ok": True, "client": a["name"], "version": q.get("version"), "paused": bool(q.get("paused")),
         "speed": num(q.get("kbpersec")) * 1024, "left": num(q.get("mbleft")) * 1048576, "eta": q.get("timeleft"),
         "queueTotal": q.get("noofslots_total", 0),
         "queue": [{"id": s.get("nzo_id"), "title": html.unescape(s.get("filename") or ""), "pct": num(s.get("percentage")), "left": s.get("timeleft"), "size": s.get("size"), "state": s.get("status")} for s in q.get("slots", [])],
         "failed": failed,
         "totals": {k: st.get(k, 0) for k in ("day", "week", "month", "total")},
-    }
+    })
 
 
 # ---------- NZBGet: JSON-RPC with user and password ----------
@@ -803,7 +848,7 @@ def clock(seconds):
 
 def read_nzbget():
     a = BY_KIND.get("nzbget")
-    if not a or DOWNLOADER is not a:
+    if not a:
         return
     try:
         st = nzb_call(a, "status")
@@ -812,7 +857,7 @@ def read_nzbget():
         vols = nzb_call(a, "servervolumes")
         version = nzb_call(a, "version")
     except FAIL:
-        state["sab"] = {"ok": False, "client": a["name"]}
+        dl_done(a, {"ok": False, "client": a["name"]})
         return
     speed = float(st.get("DownloadRate") or 0)
     left = nzb_bytes(st, "RemainingSize") or (st.get("RemainingSizeMB") or 0) * 1048576
@@ -823,38 +868,160 @@ def read_nzbget():
                       "left": clock(rem / speed) if speed and rem else "", "size": f"{total / 1073741824:.1f} GB", "state": (g.get("Status") or "").title()})
     # Finished downloads for the live feed, as with SABnzbd: what left the queue, looked up in the history.
     ids = {q["id"]: q["title"] for q in queue}
-    if sab_seen is not None and not LIVE.hooked(a["name"]):
+    seen = dl_seen.get(a["key"])
+    if seen is not None and not LIVE.hooked(a["name"]):
         done = {nzb_id(h): h for h in hist[:50]}
-        for i in [i for i in sab_seen if i not in ids]:
+        for i in [i for i in seen if i not in ids]:
             h = done.get(i)
             if not h:
                 continue
-            name = download_titles.get(i.lower()) or tidy(h.get("Name") or sab_seen[i])
+            name = download_titles.get(i.lower()) or tidy(h.get("Name") or seen[i])
             status = str(h.get("Status") or "")
             if status.startswith("SUCCESS"):
                 LIVE.emit(a["name"], "download", f"finished downloading {name}", "success")
             elif status.startswith("FAILURE"):
                 LIVE.emit(a["name"], "error", f"download failed: {name} ({status.split('/', 1)[-1].lower()})", "error")
-    sab_seen_set(ids)
+    dl_seen[a["key"]] = ids
     totals = {"day": 0, "week": 0, "month": 0, "total": 0}
     v = next((x for x in vols if x.get("ServerID") == 0), vols[0] if vols else None)
     if v:
         days, slot = v.get("BytesPerDays") or [], int(v.get("DaySlot") or 0)
         per_day = lambda back: sum(nzb_bytes(days[slot - i], "Size") for i in range(back) if 0 <= slot - i < len(days))
         totals = {"day": per_day(1), "week": per_day(7), "month": per_day(30), "total": nzb_bytes(v, "TotalSize")}
-    state["sab"] = {
+    dl_done(a, {
         "ok": True, "client": a["name"], "version": version, "paused": bool(st.get("DownloadPaused")),
         "speed": speed, "left": left, "eta": clock(left / speed) if speed and left else "",
         "queueTotal": len(groups), "queue": queue[:60],
         "failed": sum(1 for h in hist[:100] if str(h.get("Status") or "").startswith("FAILURE")),
         "totals": totals,
-    }
+    })
+
+
+# ---------- qBittorrent Web API (rdtclient too): sign in, then a session cookie ----------
+qb_cookies = {}  # app key -> the cookie its login gave
+qb_alltime = {}  # app key -> {"at": time, "bytes": all-time downloaded, or None}
+QB_STATES = {"downloading": "Downloading", "forcedDL": "Downloading", "metaDL": "Getting metadata", "forcedMetaDL": "Getting metadata",
+             "stalledDL": "Stalled", "queuedDL": "Queued", "pausedDL": "Paused", "stoppedDL": "Paused", "checkingDL": "Checking",
+             "allocating": "Allocating", "moving": "Moving", "checkingResumeData": "Checking"}
+QB_NO_ETA = 8640000  # what qBittorrent reports when it can't tell
+
+
+def qb_login(a, jar):
+    """Sign in with user and password. Without a user name it relies on qBittorrent's
+    "bypass authentication" for the dashboard's address and sends no cookie."""
+    if not (a.get("username") or a["api_key"]):
+        jar[a["key"]] = ""
+        return
+    body = urllib.parse.urlencode({"username": a.get("username", ""), "password": a["api_key"]}).encode()
+    # qBittorrent refuses requests whose Referer/Origin isn't its own address (CSRF protection).
+    req = urllib.request.Request(a["url"] + "/api/v2/auth/login", data=body, headers={
+        "Referer": a["url"], "Origin": a["url"], "Content-Type": "application/x-www-form-urlencoded"})
+    with urllib.request.urlopen(req, timeout=8, context=DEFAULT_SSL if a["verify"] else INSECURE_SSL) as r:
+        text = r.read(256).decode(errors="replace").strip()
+        cookie = "; ".join(c.split(";", 1)[0].strip() for c in r.headers.get_all("Set-Cookie") or [])
+    if not text.lower().startswith("ok"):
+        raise ValueError("wrong user name or password")
+    jar[a["key"]] = cookie
+
+
+def qb_get(a, path, raw=False, jar=None):
+    """GET from the Web API, signing in first and again when the session has run out."""
+    jar = qb_cookies if jar is None else jar
+    if a["key"] not in jar:
+        qb_login(a, jar)
+    for attempt in (0, 1):
+        headers = {"Referer": a["url"], **({"Cookie": jar[a["key"]]} if jar.get(a["key"]) else {})}
+        try:
+            return http_get(f"{a['url']}/api/v2/{path}", headers, timeout=8, context=DEFAULT_SSL if a["verify"] else INSECURE_SSL, raw=raw)
+        except urllib.error.HTTPError as e:
+            if e.code not in (401, 403) or attempt:
+                raise
+            qb_login(a, jar)
+
+
+def qb_version(a, jar=None):
+    return qb_get(a, "app/version", raw=True, jar=jar).decode(errors="replace").strip()[:40]
+
+
+def qb_size(t):
+    """-1 or 0 while the torrent's metadata is still on its way."""
+    size = max((v for v in (t.get("size"), t.get("total_size")) if isinstance(v, (int, float))), default=0)
+    return f"{size / 1073741824:.1f} GB" if size > 0 else ""
+
+
+def read_qbittorrent(key):
+    a = BY_KIND.get(key)
+    if not a:
+        return
+    try:
+        version = qb_version(a)
+        # Only what is still downloading, whatever is seeding (often thousands of torrents) stays out of it.
+        torrents = qb_get(a, "torrents/info?filter=downloading&sort=added_on")
+    except FAIL:
+        qb_cookies.pop(key, None)
+        dl_done(a, {"ok": False, "client": a["name"]})
+        return
+    try:
+        info = qb_get(a, "transfer/info")
+    except FAIL:
+        info = {}  # rdtclient may not have it: the torrents' own speeds then
+    try:
+        errored = len(qb_get(a, "torrents/info?filter=errored"))
+    except FAIL:
+        errored = 0
+    alltime = qb_alltime.get(key)
+    if not alltime or time.time() - alltime["at"] > 600:  # the full sync is big: every ten minutes is plenty
+        try:
+            got = (qb_get(a, "sync/maindata?rid=0").get("server_state") or {}).get("alltime_dl")
+        except FAIL:
+            got = None
+        alltime = qb_alltime[key] = {"at": time.time(), "bytes": got}
+    num = lambda v: float(v or 0)
+    active = [t for t in torrents if isinstance(t, dict) and t.get("hash") and num(t.get("progress")) < 1
+              and t.get("state") not in ("error", "missingFiles")]
+    # qBittorrent's queue order where it has one (priority 1, 2, ...), otherwise the order they were added.
+    active.sort(key=lambda t: (int(t.get("priority") or 0) <= 0, int(t.get("priority") or 0), num(t.get("added_on"))))
+    speed = num(info.get("dl_info_speed")) if "dl_info_speed" in info else sum(num(t.get("dlspeed")) for t in active)
+    left = sum(num(t.get("amount_left")) for t in active)
+    queue = [{"id": t["hash"], "title": str(t.get("name") or ""), "pct": num(t.get("progress")) * 100,
+              "left": clock(t["eta"]) if isinstance(t.get("eta"), (int, float)) and 0 < t["eta"] < QB_NO_ETA else "",
+              "size": qb_size(t),
+              "state": QB_STATES.get(t.get("state"), str(t.get("state") or "").title())} for t in active]
+    ids = {q["id"]: q["title"] for q in queue}
+    seen = dl_seen.get(key)
+    gone = [i for i in seen if i not in ids][:50] if seen is not None else []
+    if gone and not LIVE.hooked(a["name"]):
+        # Finished, failed or removed: ask about just these.
+        try:
+            now = {t.get("hash"): t for t in qb_get(a, "torrents/info?hashes=" + "|".join(urllib.parse.quote(i) for i in gone))}
+        except FAIL:
+            now = {}
+        for i in gone:
+            t = now.get(i)
+            if not t:
+                continue  # removed before it finished
+            name = download_titles.get(i.lower()) or tidy(t.get("name") or seen[i])
+            if t.get("state") in ("error", "missingFiles"):
+                LIVE.emit(a["name"], "error", f"download failed: {name} ({livemod.clean(t.get('state'), 40)})", "error")
+            elif num(t.get("progress")) >= 1:
+                LIVE.emit(a["name"], "download", f"finished downloading {name}", "success")
+    dl_seen[key] = ids
+    dl_done(a, {
+        "ok": True, "client": a["name"], "version": version,
+        "paused": bool(active) and all(t.get("state") in ("pausedDL", "stoppedDL") for t in active),
+        "speed": speed, "left": left, "eta": clock(left / speed) if speed and left else "",
+        "queueTotal": len(active), "queue": queue[:60], "failed": errored,
+        # qBittorrent keeps no per-day numbers: today, this week and this month stay empty.
+        "totals": {"day": None, "week": None, "month": None, "total": alltime["bytes"]},
+    })
 
 
 # ---------- what needs attention ----------
 def app_state(key):
+    if key in DL_KEYS:
+        return dl_state.get(key, {})
     if key in BUILTIN:
-        return state["sab" if key in ("sabnzbd", "nzbget") else key]
+        return state[key]
     return state["custom"].get(key, {})
 
 
@@ -880,7 +1047,7 @@ def alerts():
         elif app_state(s["key"]).get("ok") is False:
             add("error", s["name"], "Reachable, but the API isn't answering: check the URL and API key")
     for a in APPS:
-        if a["kind"] in ("sabnzbd", "nzbget"):
+        if a["key"] in DL_KEYS:
             continue
         s = app_state(a["key"])
         if not s.get("ok"):
@@ -892,12 +1059,13 @@ def alerts():
                 add("error", a["name"], f"Root folder not reachable: {r['path']}")
         if "roots" in s and not s["roots"]:
             add("warning", a["name"], "No root folder set, so nothing can be imported")
-    sab = state["sab"]
-    if sab.get("ok"):
-        if sab["paused"]:
-            add("warning", sab.get("client", DL_NAME), "Downloads are paused")
-        if sab["failed"]:
-            add("warning", sab.get("client", DL_NAME), f"{sab['failed']} failed download(s) in history")
+    for a in DOWNLOADERS:
+        sab = dl_state.get(a["key"]) or {}
+        if sab.get("ok"):
+            if sab["paused"]:
+                add("warning", a["name"], "Downloads are paused")
+            if sab["failed"]:
+                add("warning", a["name"], f"{sab['failed']} failed download(s) in history")
     for d in state["disks"]:
         if d["free"] / d["total"] < 0.1:
             add("warning", "Drives", f"{d['name']} is over 90% full")
@@ -1286,6 +1454,11 @@ def wizard_test(req):
             if not a.get("url"):
                 return {"ok": False, "error": "URL is missing"}
             app = make_app(key or "custom", a, BUILTIN.get(key))
+            if app["kind"] == "qbittorrent":
+                jar = {}  # its own login: the running dashboard's session stays with the saved server
+                v = qb_version(app, jar)
+                qb_get(app, "torrents/info?filter=downloading&limit=1", jar=jar)
+                return {"ok": True, "version": v}
             if app["kind"] == "nzbget":
                 nzb_call(app, "status")
                 return {"ok": True, "version": nzb_call(app, "version")}
@@ -1376,14 +1549,15 @@ def build_config(req):
             continue
         old_a = (old.get("apps") or {}).get(key) or {}
         k = a.get("api_key") or keep_secret(old_a.get("url"), a.get("url"), old_a.get("api_key", ""))
-        if not k and key != "nzbget":  # NZBGet may run without a password
+        if not k and key not in LOGIN_KEYS:  # NZBGet and qBittorrent may run without a password
             raise ValueError(f"{BUILTIN[key]['name']}: API key is missing (a new address needs the key again)")
         c["apps"][key] = {"url": clean_url(a.get("url")), "api_key": k, "verify_tls": bool(a.get("verify_tls", True)),
                           **({"username": a["username"].strip()[:64]} if (a.get("username") or "").strip() else {}),
                           **({"web_url": clean_url(a["web_url"])} if (a.get("web_url") or "").strip() else {})}
 
     c["custom_apps"] = []
-    seen = set(b["name"].lower() for b in BUILTIN.values())
+    # Only the built-in apps that are switched on: a custom "qBittorrent" from before it was built in still saves.
+    seen = set(BUILTIN[k]["name"].lower() for k in c["apps"])
     for a in req.get("custom_apps") or []:
         name = (a.get("name") or "").strip()[:40]
         if not name:
@@ -1903,6 +2077,9 @@ if __name__ == "__main__":
             looped(5, read_services)
             looped(5, read_sab)
             looped(5, read_nzbget)
+            for _k in ("qbittorrent", "rdtclient"):
+                if _k in BY_KIND:
+                    looped(5, lambda k=_k: read_qbittorrent(k))
             looped(5, read_radarr)
             looped(5, read_sonarr)
             looped(60, read_prowlarr)

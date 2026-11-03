@@ -5,6 +5,14 @@ becomes its GitHub release text, so write it for the people who run the dashboar
 
 ## Unreleased
 
+Added:
+- qBittorrent and rdtclient (Real-Debrid / AllDebrid) as download clients: speed, queue, finished and failed downloads in the live feed, Radarr's and Sonarr's titles for each torrent. rdtclient speaks qBittorrent's Web API, so both sign in with user and password (or none, with qBittorrent's "Bypass authentication" for the dashboard's address).
+- Several download clients at once, for example SABnzbd plus qBittorrent or rdtclient plus qBittorrent: the download card, speed graph and parcel pile add them up, each worker in the office shows its own queue, and pauses and failures are reported per client.
+
+Changed:
+- If you added qBittorrent as a custom app before, switch on the built-in one under Settings → Apps and remove the custom one (both can't have the same name). qBittorrent's preset for custom apps is gone.
+- qBittorrent keeps no per-day numbers, so "Today", "This week" and "This month" show "–" for it; "All time" comes from qBittorrent.
+
 ## 0.3.5 - 2026-11-03
 
 Security (second audit):
