@@ -5,6 +5,8 @@ becomes its GitHub release text, so write it for the people who run the dashboar
 
 ## Unreleased
 
+## 0.3.4 - 2026-11-03
+
 Security (from an audit):
 - A negative `Content-Length` made the server read and buffer everything until the connection ended, without logging in (memory exhaustion); it is now refused with 400.
 - Connections that send nothing more are closed after 20 seconds, and at most 200 requests are handled at a time, instead of one thread each, kept forever.
