@@ -5,6 +5,16 @@ becomes its GitHub release text, so write it for the people who run the dashboar
 
 ## Unreleased
 
+Security (second audit):
+- Saved API keys and the Proxmox token were reused for a changed address, so an open session could send them to any server (connection test or saving). They are now only reused for the same server; a new address needs them again.
+- Sessions are known to the server: each sign-in gets its own, signing out ends it on the server, a new password ends all of them, "Sign out everywhere" in the account settings, and they expire after 30 days unused (180 at most). Open live streams close when their session ends.
+- The app can no longer write Caddy's configuration: a root helper (`msd-caddy.py`) writes the site from the checked settings.
+- The update service runs cosign as `nobody` in a folder of its own, and is sandboxed by systemd; the app's sandbox is stricter (falls back automatically where a container can't apply it).
+- New installs and `install-lxc.sh --update` take the newest signed release and check it like the updater does (`MSD_FROM_CHECKOUT=1` for this checkout instead).
+- `/api/open` only redirects to plain http(s) addresses and encodes what a media server returns.
+
+Run `install-lxc.sh --update <CTID>` once on the Proxmox host for the Caddy helper, the new sandbox and the signed install path.
+
 ## 0.3.4 - 2026-11-03
 
 Security (from an audit):

@@ -109,7 +109,8 @@ nav button.dirty::after { content: ' •'; color: #9cc4ff; }
       <label>Repeat the password<input id="pw2" type="password" autocomplete="new-password"></label>
     </div>
     <label id="curPwBox" hidden>Current password <span class="hint">(needed to set a new one)</span><input id="curPw" type="password" autocomplete="current-password"></label>
-    <div class="hint">At least 10 characters.</div>
+    <div class="hint">At least 10 characters. A new password signs out every browser.</div>
+    <div class="row" id="sessionsRow" hidden><button class="ghost" id="endAll">Sign out everywhere</button><span class="status" id="endAllStatus"></span></div>
   </section>
 
   <section class="glass" data-step="Address" id="s-address">
@@ -327,6 +328,12 @@ function validate(id) {
 // The current password only matters (and only shows) when a new one is typed in the settings.
 $('pw').addEventListener('input', () => { $('curPwBox').hidden = !(cfg && cfg.setup_done && $('pw').value); });
 
+$('endAll').onclick = async () => {
+  if (!confirm('Sign out every browser and device, including this one?')) return;
+  const r = await api('/api/sessions/end-all', {});
+  if (r.ok) location.href = '/login'; else setStatus($('endAllStatus'), 'err', '✕ ' + (r.error || 'failed'));
+};
+
 // ---------- token ----------
 $('tokenGo').onclick = async () => {
   token = $('token').value.trim();
@@ -382,7 +389,7 @@ function builtinCard(key, b, a) {
       <div class="grid2">
         <label>URL<input type="url" class="url" value="${esc(a.url)}" placeholder="http://192.168.1.x:${b.port}"></label>
         ${nzb ? `<label>Username <span class="hint">(Settings → Security → ControlUsername)</span><input type="text" class="user" value="${esc(a.username || '')}" autocomplete="off" spellcheck="false"></label>` : ''}
-        <label>${nzb ? 'Password <span class="hint">(ControlPassword)</span>' : 'API key'} ${a.has_key ? '<span class="hint">(saved – leave empty to keep it)</span>' : ''}<input type="password" class="key" autocomplete="off"></label>
+        <label>${nzb ? 'Password <span class="hint">(ControlPassword)</span>' : 'API key'} ${a.has_key ? '<span class="hint">(saved – leave empty to keep it for this address)</span>' : ''}<input type="password" class="key" autocomplete="off"></label>
       </div>
       <label>Open in the browser at <span class="hint">(optional, if not the URL above; clicking the worker in the office opens it)</span><input type="url" class="web" value="${esc(a.web_url || '')}" placeholder="https://radarr.home.lan"></label>
       <div class="row"><label class="check"><input type="checkbox" class="verify" ${a.verify_tls !== false ? 'checked' : ''}> Check the certificate (https)</label>
@@ -634,6 +641,7 @@ function load(c) {
   if (!c.setup_done) $('s-token').removeAttribute('data-skip');
   $('title').value = c.title;
   $('user').value = c.user;
+  $('sessionsRow').hidden = !c.setup_done;
   $('pwHint').innerHTML = c.setup_done ? '<span class="hint">(leave empty to keep it)</span>' : '';
   document.querySelector(`input[name=addr][value=${c.behind_proxy ? 'proxy' : c.domain ? 'domain' : 'ip'}]`).checked = true;
   $('proxyTarget').textContent = `http://${c.lan || '<container IP>'}:${c.caddy ? 80 : c.port}`;
@@ -646,7 +654,7 @@ function load(c) {
   const p = c.proxmox;
   $('pveOn').checked = !!p.url || !c.setup_done;
   $('pveUrl').value = p.url; $('pveTokenId').value = p.token_id; $('pveVerify').checked = p.verify_tls !== false; $('pveCa').value = p.ca_file;
-  $('pveSecretHint').innerHTML = p.has_secret ? '<span class="hint">(saved – leave empty to keep it)</span>' : '';
+  $('pveSecretHint').innerHTML = p.has_secret ? '<span class="hint">(saved – leave empty to keep it for this address)</span>' : '';
   if (p.node) $('pveNode').innerHTML = `<option selected>${esc(p.node)}</option>`;
   syncPve();
   pveReady = p.url && p.token_id && p.has_secret ? testPve() : Promise.resolve();

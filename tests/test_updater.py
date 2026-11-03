@@ -136,7 +136,7 @@ echo "error: wrong identity: $args" >&2; exit 1
     def updater(self, **extra):
         return U.Updater({"repo": REPO, "api": self.gh.url, "app_root": self.app_root, "data_dir": self.data, "work_dir": self.work,
                           "cosign": self.cosign, "systemctl": self.systemctl, "health_url": self.gh.url + "/healthz",
-                          "health_timeout": 3, "self_path": f"{self.tmp.name}/msd-updater.py", **extra})
+                          "health_timeout": 3, "self_path": f"{self.tmp.name}/msd-updater.py", "verify_user": "", **extra})
 
     def current(self):
         return open(f"{self.app_root}/current/VERSION").read().strip()

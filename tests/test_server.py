@@ -56,6 +56,22 @@ class BuildConfig(unittest.TestCase):
         finally:
             server.CONFIG.clear()
 
+    def test_saved_secrets_only_go_to_their_own_server(self):
+        server.CONFIG.clear()
+        server.CONFIG.update({"auth": {"user": "luis", "salt": "00", "hash": "ab", "iterations": 1},
+                              "apps": {"radarr": {"url": "http://10.0.0.21:7878", "api_key": "secret-key"}},
+                              "proxmox": {"url": "https://10.0.0.1:8006", "node": "pve", "token_id": "t@pve!x", "token_secret": "pve-secret"}})
+        try:
+            with self.assertRaisesRegex(ValueError, "needs the key again"):
+                server.build_config(wizard(password="", apps={"radarr": {"enabled": True, "url": "http://evil.example:7878"}}))
+            with self.assertRaisesRegex(ValueError, "needs the secret again"):
+                server.build_config(wizard(password="", proxmox={"url": "https://evil.example:8006", "node": "pve", "token_id": "t@pve!x"}))
+            c = server.build_config(wizard(password="", apps={"radarr": {"enabled": True, "url": "http://10.0.0.21:7878/"}}))
+            self.assertEqual(c["apps"]["radarr"]["api_key"], "secret-key")  # same server: kept
+            self.assertEqual(server.keep_secret("http://a:1", "https://a:1", "k"), "")  # another scheme is another server
+        finally:
+            server.CONFIG.clear()
+
     def test_secrets_are_kept_when_left_empty(self):
         server.CONFIG.clear()
         server.CONFIG.update({"auth": {"user": "luis", "salt": "00", "hash": "ab", "iterations": 1}, "webhook_token": "keep-me",
@@ -203,3 +219,40 @@ class Posters(unittest.TestCase):
         self.assertEqual(st["steps"][0]["name"], "Check signature")
         self.assertEqual(st["log"], ["21:00 Done"])
         self.assertEqual(st["last"]["error"], "invalid signature: x")
+
+
+class CaddyHelper(unittest.TestCase):
+    """scripts/msd-caddy.py (root) writes Caddy's site; it must match the app's view and let nothing odd through."""
+
+    def setUp(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("msd_caddy", os.path.join(ROOT, "scripts", "msd-caddy.py"))
+        self.h = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.h)
+
+    def test_same_site_as_the_app(self):
+        for c in ({}, {"domain": "dash.example.org"}, {"domain": "dash.home.lan", "tls": "internal", "ip_access": False},
+                  {"behind_proxy": True, "domain": "dash.example.org"}, {"port": 9000}):
+            with self.subTest(c=c):
+                self.assertEqual(self.h.render(self.h.checked(c)), server.caddy_site({"port": 8900, **c}))
+
+    def test_odd_values_dont_reach_caddy(self):
+        c = self.h.checked({"domain": "evil.com {\n respond \"x\"\n}\nfoo", "port": "80; import /etc/passwd", "behind_proxy": "yes"})
+        self.assertEqual(c["domain"], "")
+        self.assertEqual(c["port"], 8900)
+        self.assertFalse(c["behind_proxy"])
+        self.assertNotIn("evil", self.h.render(c))
+
+    def test_writes_from_the_settings_file(self):
+        d = tempfile.mkdtemp()
+        json.dump({"behind_proxy": True, "auth": {"hash": "secret"}}, open(f"{d}/config.json", "w"))
+        os.environ["MSD_CADDY_NO_RELOAD"] = "1"
+        try:
+            self.h.main(["x", f"{d}/config.json", f"{d}/site.caddy"])
+        finally:
+            os.environ.pop("MSD_CADDY_NO_RELOAD")
+        site = open(f"{d}/site.caddy").read()
+        self.assertIn("X-Msd-Forwarded-For", site)
+        self.assertNotIn("secret", site)
+        os.symlink(f"{d}/config.json", f"{d}/link.json")  # the app's file is never followed through a link
+        self.assertEqual(self.h.read_settings(f"{d}/link.json"), {})

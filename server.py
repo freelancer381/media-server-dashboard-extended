@@ -542,7 +542,7 @@ def find_in_media_server(kind, title, year):
         match = next((m for m in items if m.get("Name", "").lower() == title.lower() and good_year(m.get("ProductionYear"))), None) \
             or next((m for m in items if good_year(m.get("ProductionYear"))), None)
         if match:
-            url = f"{web}/web/#/details?id={match['Id']}&serverId={info.get('Id', '')}"
+            url = f"{web}/web/#/details?id={urllib.parse.quote(str(match['Id']), safe='')}&serverId={urllib.parse.quote(str(info.get('Id', '')), safe='')}"
     open_cache[key] = (time.time(), url)
     return url
 
@@ -1137,9 +1137,71 @@ def check_login(user, pw):
     return hmac.compare_digest(user.strip().lower().encode(), AUTH["user"].lower().encode()) & hmac.compare_digest(given, AUTH["hash"])
 
 
-def session_token():
-    # Tied to the password hash: changing the password signs everyone out.
-    return hmac.new(private_file(SECRET_FILE, lambda: secrets.token_hex(32)).encode(), (AUTH.get("user", "") + AUTH.get("hash", "")).encode(), hashlib.sha256).hexdigest()
+# ---------- sessions: one per sign-in, known to the server, so they can end ----------
+SESSIONS_FILE = os.path.join(DATA, "sessions.json")
+SESSION_IDLE = 30 * 86400     # unused for 30 days: signed out
+SESSION_MAX = 180 * 86400     # and after 180 days in any case
+sessions_lock = threading.Lock()
+
+
+def _load_sessions():
+    try:
+        with open(SESSIONS_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+        # Bound to the password: sessions from before a password change don't count.
+        return data.get("s", {}) if data.get("auth") == AUTH.get("hash") else {}
+    except (OSError, ValueError, AttributeError):
+        return {}
+
+
+sessions = _load_sessions()
+sessions_saved_at = [0.0]
+
+
+def _save_sessions(force=False):
+    if not force and time.time() - sessions_saved_at[0] < 300:
+        return
+    sessions_saved_at[0] = time.time()
+    try:
+        write_private(SESSIONS_FILE, json.dumps({"auth": AUTH.get("hash"), "s": sessions}))
+    except OSError as e:
+        print(f"sessions: could not save: {e}", flush=True)
+
+
+sid_hash = lambda sid: hashlib.sha256(sid.encode()).hexdigest()  # only the hash is kept on disk
+
+
+def session_new(ip, agent):
+    sid = secrets.token_urlsafe(32)
+    with sessions_lock:
+        now = time.time()
+        for k in [k for k, v in sessions.items() if now - v["seen"] > SESSION_IDLE or now - v["created"] > SESSION_MAX]:
+            sessions.pop(k)
+        sessions[sid_hash(sid)] = {"created": now, "seen": now, "ip": ip, "agent": (agent or "")[:80]}
+        _save_sessions(force=True)
+    return sid
+
+
+def session_valid(sid):
+    if not sid or len(sid) > 100:
+        return False
+    with sessions_lock:
+        s = sessions.get(sid_hash(sid))
+        now = time.time()
+        if not s or now - s["seen"] > SESSION_IDLE or now - s["created"] > SESSION_MAX:
+            return False
+        s["seen"] = now
+        _save_sessions()
+        return True
+
+
+def session_end(sid=None, everyone=False):
+    with sessions_lock:
+        if everyone:
+            sessions.clear()
+        elif sid:
+            sessions.pop(sid_hash(sid), None)
+        _save_sessions(force=True)
 
 
 def setup_token():
@@ -1159,7 +1221,7 @@ def public_config():
     return {
         "setup_done": SETUP_DONE, "demo": DEMO, "title": TITLE, "user": AUTH.get("user", ""),
         "domain": c.get("domain", ""), "tls": c.get("tls", "public"), "ip_access": c.get("ip_access", True), "behind_proxy": bool(c.get("behind_proxy")),
-        "caddy": bool(c.get("caddy_site_file")), "lan": state["network"].get("lan", ""), "port": PORT,
+        "caddy": bool(c.get("caddy_site_file") or c.get("caddy_managed")), "lan": state["network"].get("lan", ""), "port": PORT,
         "proxmox": {"url": p.get("url", ""), "node": p.get("node", ""), "token_id": p.get("token_id", ""), "has_secret": bool(p.get("token_secret")),
                     "verify_tls": p.get("verify_tls", True), "ca_file": p.get("ca_file", "")},
         "storages": STORAGES, "watch_guests": WATCH_GUESTS,
@@ -1177,6 +1239,21 @@ def public_config():
     }
 
 
+def origin_of(url):
+    try:
+        u = urllib.parse.urlparse(url or "")
+        return (u.scheme.lower(), (u.hostname or "").lower(), u.port or (443 if u.scheme == "https" else 80))
+    except ValueError:
+        return None
+
+
+def keep_secret(saved_url, new_url, secret):
+    """A saved key or token is only reused for the server it was entered for. Pointed at another address,
+    it has to be entered again; otherwise an open session could send it to any server."""
+    o = origin_of(saved_url)
+    return secret if o and o[1] and o == origin_of(new_url) else ""
+
+
 def wizard_test(req):
     """Try a connection with what the wizard has filled in so far. Returns what was found, or why it failed."""
     what = req.get("what")
@@ -1186,7 +1263,8 @@ def wizard_test(req):
         if what == "proxmox":
             p = dict(req.get("proxmox") or {})
             if not p.get("token_secret"):
-                p["token_secret"] = (CONFIG.get("proxmox") or {}).get("token_secret", "")
+                saved_p = CONFIG.get("proxmox") or {}
+                p["token_secret"] = keep_secret(saved_p.get("url"), p.get("url"), saved_p.get("token_secret", ""))
             for k in ("url", "token_id", "token_secret"):
                 if not p.get(k):
                     return {"ok": False, "error": f"{k} is missing"}
@@ -1204,7 +1282,7 @@ def wizard_test(req):
             saved = ((CONFIG.get("apps") or {}).get(key) if key in BUILTIN else
                      next((c for c in CONFIG.get("custom_apps") or [] if c.get("name") == a.get("name")), None)) or {}
             if not a.get("api_key"):
-                a["api_key"] = saved.get("api_key", "")
+                a["api_key"] = keep_secret(saved.get("url"), a.get("url"), saved.get("api_key", ""))
             if not a.get("url"):
                 return {"ok": False, "error": "URL is missing"}
             app = make_app(key or "custom", a, BUILTIN.get(key))
@@ -1249,7 +1327,7 @@ def clean_url(u):
 def build_config(req):
     """The new config.json from the wizard's answers, keeping saved secrets that weren't re-entered."""
     old = CONFIG
-    c = {k: v for k, v in old.items() if k in ("port", "bind", "trusted_proxies", "caddy_site_file", "internet_check", "updates")}
+    c = {k: v for k, v in old.items() if k in ("port", "bind", "trusted_proxies", "caddy_site_file", "caddy_managed", "internet_check", "updates")}
     c["webhook_token"] = secrets.token_urlsafe(24) if req.get("new_webhook_token") or not old.get("webhook_token") else old["webhook_token"]
     c["game"] = {"enabled": bool((req.get("game") or {}).get("enabled", True))}
     c["title"] = (req.get("title") or "").strip()[:80] or "Media Server Dashboard"
@@ -1282,9 +1360,10 @@ def build_config(req):
 
     p = req.get("proxmox") or {}
     if p.get("url"):
-        secret = p.get("token_secret") or (old.get("proxmox") or {}).get("token_secret", "")
+        old_p = old.get("proxmox") or {}
+        secret = p.get("token_secret") or keep_secret(old_p.get("url"), p.get("url"), old_p.get("token_secret", ""))
         if not (p.get("node") and p.get("token_id") and secret):
-            raise ValueError("Proxmox: node, token ID and secret are needed")
+            raise ValueError("Proxmox: node, token ID and secret are needed (a new address needs the secret again)")
         c["proxmox"] = {"url": clean_url(p["url"]), "node": p["node"].strip(), "token_id": p["token_id"].strip(), "token_secret": secret,
                         "verify_tls": bool(p.get("verify_tls", True)), **({"ca_file": p["ca_file"].strip()} if (p.get("ca_file") or "").strip() else {})}
     c["storages"] = [str(s) for s in req.get("storages") or []]
@@ -1295,9 +1374,10 @@ def build_config(req):
         a = (req.get("apps") or {}).get(key) or {}
         if not a.get("enabled"):
             continue
-        k = a.get("api_key") or ((old.get("apps") or {}).get(key) or {}).get("api_key", "")
+        old_a = (old.get("apps") or {}).get(key) or {}
+        k = a.get("api_key") or keep_secret(old_a.get("url"), a.get("url"), old_a.get("api_key", ""))
         if not k and key != "nzbget":  # NZBGet may run without a password
-            raise ValueError(f"{BUILTIN[key]['name']}: API key is missing")
+            raise ValueError(f"{BUILTIN[key]['name']}: API key is missing (a new address needs the key again)")
         c["apps"][key] = {"url": clean_url(a.get("url")), "api_key": k, "verify_tls": bool(a.get("verify_tls", True)),
                           **({"username": a["username"].strip()[:64]} if (a.get("username") or "").strip() else {}),
                           **({"web_url": clean_url(a["web_url"])} if (a.get("web_url") or "").strip() else {})}
@@ -1316,7 +1396,7 @@ def build_config(req):
         prev = next((x for x in old.get("custom_apps") or [] if x.get("name") == name), {})
         entry = {"name": name, "kind": kind, "url": clean_url(a.get("url")), "auth": auth, "verify_tls": bool(a.get("verify_tls", True)),
                  **({"web_url": clean_url(a["web_url"])} if (a.get("web_url") or "").strip() else {}),
-                 "api_key": a.get("api_key") or prev.get("api_key", "")}
+                 "api_key": a.get("api_key") or keep_secret(prev.get("url"), a.get("url"), prev.get("api_key", ""))}
         if auth != "none":
             entry["auth_name"] = (a.get("auth_name") or "X-Api-Key").strip()[:64]
         if kind == "arr":
@@ -1405,10 +1485,20 @@ def on_sigterm(signum, frame):
 
 
 def save_and_restart(c):
+    if (c.get("auth") or {}).get("hash") != AUTH.get("hash"):
+        session_end(everyone=True)  # a new password signs everyone out
     write_private(CONFIG_FILE, json.dumps(c, indent=2) + "\n")
-    if c.get("caddy_site_file"):
-        with open(c["caddy_site_file"], "w", encoding="utf-8") as f:  # a systemd path unit reloads Caddy when this changes
-            f.write(caddy_site(c))
+    if c.get("caddy_managed"):
+        # Caddy's site is written by a root helper from the saved settings (msd-caddy.path watches this file);
+        # the app can't write Caddy's configuration itself.
+        with open(os.path.join(DATA, "caddy-request"), "w", encoding="utf-8") as f:
+            f.write(str(time.time()))
+    elif c.get("caddy_site_file"):
+        try:  # installs from before 0.3.5 that haven't run install-in-container.sh again
+            with open(c["caddy_site_file"], "w", encoding="utf-8") as f:
+                f.write(caddy_site(c))
+        except OSError as e:
+            print(f"caddy site: {e}", flush=True)
     try:
         os.remove(SETUP_TOKEN_FILE)
     except OSError:
@@ -1424,7 +1514,7 @@ def save_and_restart(c):
 def dashboard_url(c, lan):
     """Where to go after saving: the new domain if Caddy serves it; otherwise stay on the address in use
     (in Docker or behind your own proxy, only the browser knows the right one)."""
-    if c.get("domain") and c.get("caddy_site_file") and not c.get("behind_proxy"):
+    if c.get("domain") and (c.get("caddy_site_file") or c.get("caddy_managed")) and not c.get("behind_proxy"):
         return f"https://{c['domain']}/"
     return "/"
 
@@ -1495,8 +1585,14 @@ class Handler(BaseHTTPRequestHandler):
     def authed(self):
         if DEMO and not SETUP_DONE:
             return True
-        cookies = http.cookies.SimpleCookie(self.headers.get("Cookie", ""))
-        return SETUP_DONE and "dash_auth" in cookies and hmac.compare_digest(cookies["dash_auth"].value, session_token())
+        return SETUP_DONE and session_valid(self.session_id())
+
+    def session_id(self):
+        try:
+            cookies = http.cookies.SimpleCookie(self.headers.get("Cookie", ""))
+        except http.cookies.CookieError:
+            return ""
+        return cookies["dash_auth"].value if "dash_auth" in cookies else ""
 
     def may_setup(self):
         """The wizard is open to a signed-in user, or before the first setup to whoever has the setup token."""
@@ -1548,6 +1644,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/login":
             return self.page("login.html")
         if path == "/logout":
+            session_end(self.session_id())  # ends it on the server too, not just in this browser
             return self.redirect("/login", "dash_auth=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict")
         if path == "/api/data":
             if not self.authed():
@@ -1561,6 +1658,9 @@ class Handler(BaseHTTPRequestHandler):
             q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
             g = lambda k: (q.get(k) or [""])[0][:200]
             target = open_target("movie" if g("kind") == "movie" else "show", g("title"), g("year") if g("year").isdigit() else "", g("slug"))
+            # Only plain http(s) addresses, and nothing that could break the header (a hostile media server's answer).
+            if target and (not re.match(r"^https?://", target) or re.search(r"[\x00-\x20\x7f]", target)):
+                target = None
             return self.redirect(target) if target else self.reply(404, b"Not found in Plex, Jellyfin, Radarr or Sonarr", "text/plain")
         if path == "/api/update":
             return self.json(200, update_info()) if self.authed() else self.json(401, {"error": "sign-in needed"})
@@ -1617,6 +1717,8 @@ class Handler(BaseHTTPRequestHandler):
                     name, data = q.get(timeout=15)
                     send(name, data)
                 except queue.Empty:
+                    if not self.authed():  # signed out (here or everywhere) while the page was open
+                        return
                     self.wfile.write(b": ping\n\n")
                     self.wfile.flush()
         except (OSError, ValueError):
@@ -1671,6 +1773,11 @@ class Handler(BaseHTTPRequestHandler):
             return self.login()
         if path.startswith("/hook/"):
             return self.hook(path[len("/hook/"):])
+        if path == "/api/sessions/end-all":
+            if not self.authed() or not self.same_origin_json():
+                return self.json(401, {"ok": False, "error": "sign-in needed"})
+            session_end(everyone=True)
+            return self.json(200, {"ok": True})
         if path.startswith("/api/update/") or path == "/api/game/reset":
             if not self.authed():
                 return self.json(401, {"ok": False, "error": "sign-in needed"})
@@ -1745,7 +1852,8 @@ class Handler(BaseHTTPRequestHandler):
         if check_login(user, given):
             failures.pop(ip, None)
             secure = "; Secure" if self.https() else ""
-            return self.redirect("/office" if HOME.get("enabled") and HOME.get("start") else "/", f"dash_auth={session_token()}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Strict{secure}")
+            sid = session_new(ip, self.headers.get("User-Agent", ""))
+            return self.redirect("/office" if HOME.get("enabled") and HOME.get("start") else "/", f"dash_auth={sid}; Path=/; Max-Age={SESSION_IDLE}; HttpOnly; SameSite=Strict{secure}")
         attempts = 1 if fail[1] else fail[0] + 1  # a finished lockout starts counting again
         failures[ip] = [attempts, time.time() + LOCKOUT if attempts >= MAX_ATTEMPTS else 0, time.time()]
         if len(failures) > 5000:  # forget old entries instead of growing with every address that ever failed

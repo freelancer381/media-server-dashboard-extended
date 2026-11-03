@@ -29,6 +29,11 @@ bash /root/media-server-dashboard/proxmox/install-lxc.sh
 | IP address | DHCP or a static address with gateway | static, so webhooks know where to go |
 | Proxmox access | creates the user `dashboard@pve` with an API token, role `PVEAuditor` (read-only), and fills it into the wizard together with the host's certificate | yes |
 
+The script installs the **newest signed release**: inside the container it checks the release's signature
+(this repository's release workflow at that tag, with cosign) and the archive's SHA-256 before anything is
+installed, exactly like the in-app updater. To install your checkout instead (development), run it with
+`MSD_FROM_CHECKOUT=1`.
+
 The script then creates an **unprivileged** Debian container (nesting on, start at boot on), installs
 everything and ends with:
 

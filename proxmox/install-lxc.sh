@@ -11,6 +11,12 @@ set -euo pipefail
 
 REPO="${REPO:-https://github.com/freelancer381/media-server-dashboard-extended.git}"
 BRANCH="${BRANCH:-main}"
+# Installs and updates come from the newest signed release, checked like the in-app updater does it.
+# MSD_FROM_CHECKOUT=1 installs this checkout instead (development), MSD_FROM_GIT=1 the branch above.
+GH_REPO="$(echo "$REPO" | sed -E 's#^https://github.com/##; s#\.git$##')"
+COSIGN_VERSION=v3.1.3
+COSIGN_SHA256_amd64=4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71
+COSIGN_SHA256_arm64=c5d324e091826b0d7a78eb16fef316450b4eb9aaec045611c08ba06f5e73220a
 STAGE=/root/msd-src
 DATA=/var/lib/media-server-dashboard
 PVE_USER="dashboard@pve"
@@ -31,10 +37,51 @@ gb()    { awk -v k="$1" 'BEGIN { printf "%.0f GB", k / 1048576 }'; }
 
 # Puts the code into a staging folder in the container (from this checkout if there is one, otherwise
 # with git); install-in-container.sh then installs it as the current release.
+# Inside the container: fetch the newest release, check its signature (this repository's release workflow
+# at that tag) and the archive's SHA-256, then unpack it into the staging folder.
+push_release() {
+  local id="$1" boot
+  boot=$(mktemp)
+  cat > "$boot" <<BOOT
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq && apt-get install -y -qq --no-install-recommends curl ca-certificates python3 >/dev/null
+W=\$(mktemp -d); cd "\$W"
+ARCH=\$(dpkg --print-architecture)
+case "\$ARCH" in amd64) SUM=$COSIGN_SHA256_amd64 ;; arm64) SUM=$COSIGN_SHA256_arm64 ;; *) echo "unsupported architecture" >&2; exit 1 ;; esac
+curl -fsSL -o cosign "https://github.com/sigstore/cosign/releases/download/$COSIGN_VERSION/cosign-linux-\$ARCH"
+echo "\$SUM  cosign" | sha256sum -c --status || { echo "cosign checksum mismatch" >&2; exit 1; }
+chmod 755 cosign
+TAG=\$(curl -fsSL "https://api.github.com/repos/$GH_REPO/releases/latest" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"])')
+[[ "\$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+\$ ]] || { echo "no release found" >&2; exit 1; }
+V=\${TAG#v}
+B="https://github.com/$GH_REPO/releases/download/\$TAG"
+curl -fsSLO "\$B/release.json"; curl -fsSLO "\$B/release.json.sigstore.json"
+./cosign verify-blob --bundle release.json.sigstore.json \\
+  --certificate-identity "https://github.com/$GH_REPO/.github/workflows/release.yml@refs/tags/\$TAG" \\
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \\
+  --certificate-github-workflow-repository "$GH_REPO" --certificate-github-workflow-ref "refs/tags/\$TAG" \\
+  --certificate-github-workflow-trigger push release.json >/dev/null
+read -r NAME SHA < <(python3 -c 'import json; a=json.load(open("release.json"))["artifact"]; print(a["name"], a["sha256"])')
+curl -fsSLo archive.tar.gz "\$B/\$NAME"
+echo "\$SHA  archive.tar.gz" | sha256sum -c --status || { echo "archive checksum mismatch" >&2; exit 1; }
+rm -rf $STAGE && mkdir -p $STAGE && tar -xzf archive.tar.gz -C $STAGE --strip-components=1 --no-same-owner
+echo "    release \$V: signature and checksum OK"
+cd / && rm -rf "\$W"
+BOOT
+  pct push "$id" "$boot" /root/msd-boot.sh
+  rm -f "$boot"
+  pct exec "$id" -- bash /root/msd-boot.sh
+  pct exec "$id" -- rm -f /root/msd-boot.sh
+}
+
 push_code() {
   local id="$1"
   pct exec "$id" -- rm -rf "$STAGE"
-  if [ -n "$SRC" ]; then
+  if [ "${MSD_FROM_CHECKOUT:-}" != 1 ] && [ "${MSD_FROM_GIT:-}" != 1 ]; then
+    echo "==> Newest signed release of $GH_REPO"
+    push_release "$id"
+  elif [ -n "$SRC" ] && [ "${MSD_FROM_CHECKOUT:-}" = 1 ]; then
     echo "==> Copying code from $SRC"
     local tgz; tgz=$(mktemp --suffix=.tgz)
     tar -C "$SRC" --exclude=.git --exclude=__pycache__ --exclude=config.json --exclude=.secret --exclude=setup-token.txt -czf "$tgz" .
@@ -106,7 +153,10 @@ fi
 MAKE_TOKEN=no
 if yesno "Proxmox access" "Create a read-only API token (user $PVE_USER, role PVEAuditor) so the dashboard can show this host's CPU, memory, storages and guests?\n\nIt is filled in for you in the setup wizard."; then MAKE_TOKEN=yes; fi
 
-SUMMARY="Container $CTID ($HOSTNAME)\nDisk:    $DISK GB on $STORAGE\nCPU/RAM: $CORES core(s), $RAM MB\nNetwork: $BRIDGE${VLAN:+, VLAN $VLAN}, ${NET_IP}${NET_GW:+ via $NET_GW}\nAPI token: $MAKE_TOKEN\nCode:    ${SRC:-$REPO ($BRANCH)}"
+CODE="newest signed release of $GH_REPO"
+[ "${MSD_FROM_GIT:-}" = 1 ] && CODE="$REPO ($BRANCH), unsigned"
+[ "${MSD_FROM_CHECKOUT:-}" = 1 ] && [ -n "$SRC" ] && CODE="$SRC (this checkout), unsigned"
+SUMMARY="Container $CTID ($HOSTNAME)\nDisk:    $DISK GB on $STORAGE\nCPU/RAM: $CORES core(s), $RAM MB\nNetwork: $BRIDGE${VLAN:+, VLAN $VLAN}, ${NET_IP}${NET_GW:+ via $NET_GW}\nAPI token: $MAKE_TOKEN\nCode:    $CODE"
 yesno "Ready" "$SUMMARY\n\nCreate it now?" || exit 1
 
 # ---------- template ----------

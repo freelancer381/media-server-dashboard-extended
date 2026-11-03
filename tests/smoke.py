@@ -166,6 +166,14 @@ def main():
         check(json.load(open(req_file)) ["version"] == "9.0.0", "install request written")
         check(c.req("POST", "/api/update/install", {}, headers={"Cookie": ""})[0] == 401, "update actions need a login")
         check(c.req("POST", "/api/game/reset", {})[0] == 200, "game reset")
+        # sessions are known to the server: signing out ends them, also for a copied cookie
+        stolen = c.cookie
+        c.req("GET", "/logout")
+        check(c.req("GET", "/api/data", headers={"Cookie": stolen})[0] == 401, "a signed-out session no longer works, even copied")
+        a_ = Client(port); a_.req("POST", "/login", "user=admin&password=smoke-test-pw", ctype="application/x-www-form-urlencoded")
+        b_ = Client(port); b_.req("POST", "/login", "user=admin&password=smoke-test-pw", ctype="application/x-www-form-urlencoded")
+        check(a_.cookie != b_.cookie, "every sign-in gets its own session")
+        check(a_.req("POST", "/api/sessions/end-all", {})[0] == 200 and b_.req("GET", "/api/data")[0] == 401, "sign out everywhere ends the other sessions")
         print("smoke test passed")
     finally:
         proc.terminate()

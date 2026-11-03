@@ -31,7 +31,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
-UPDATER_VERSION = "1.2.0"
+UPDATER_VERSION = "1.3.0"
 CONF_FILE = os.environ.get("MSD_UPDATER_CONF") or "/etc/media-server-dashboard/updater.json"
 VERSION_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 ISSUER = "https://token.actions.githubusercontent.com"
@@ -162,8 +162,11 @@ class Updater:
 
     # ---------- trust ----------
     def verify(self, version, doc, bundle, workdir):
-        """Sigstore keyless: release.json must be signed by this repository's release workflow at the tag."""
-        os.makedirs(workdir, mode=0o700, exist_ok=True)
+        """Sigstore keyless: release.json must be signed by this repository's release workflow at the tag.
+        cosign reads downloaded files, so as root it runs as an unprivileged user in a folder of its own."""
+        workdir = os.path.join(workdir, "verify")
+        shutil.rmtree(workdir, ignore_errors=True)
+        os.makedirs(workdir, mode=0o700)
         d, b = os.path.join(workdir, "release.json"), os.path.join(workdir, "release.json.sigstore.json")
         with open(d, "wb") as f:
             f.write(doc)
@@ -177,8 +180,17 @@ class Updater:
                "--certificate-github-workflow-repository", repo,
                "--certificate-github-workflow-ref", f"refs/tags/{tag}",
                "--certificate-github-workflow-trigger", "push", d]
+        drop = {}
+        user = self.c.get("verify_user", "nobody")
+        if user and os.geteuid() == 0:
+            import pwd
+            pw = pwd.getpwnam(user)
+            for path in (workdir, d, b):
+                os.chown(path, pw.pw_uid, pw.pw_gid)
+            drop = {"user": pw.pw_uid, "group": pw.pw_gid, "extra_groups": []}
+        env = {"PATH": "/usr/bin:/bin", "HOME": workdir, **{k: v for k, v in os.environ.items() if k in ("HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "SSL_CERT_FILE")}}
         try:
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=180, env={**os.environ, "HOME": workdir})
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=180, env=env, cwd=workdir, **drop)
         except (OSError, subprocess.TimeoutExpired) as e:
             raise Refused(f"cosign could not run: {e}")
         if r.returncode != 0:

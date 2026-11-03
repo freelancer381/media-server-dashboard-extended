@@ -46,7 +46,7 @@ fi
 echo "==> User and folders"
 id msd >/dev/null 2>&1 || useradd --system --home-dir "$DATA" --shell /usr/sbin/nologin msd
 install -d -o msd -g msd -m 750 "$DATA" "$DATA/updater"
-install -d -o msd -g caddy -m 755 "$SITE_DIR"
+install -d -o root -g root -m 755 "$SITE_DIR"  # Caddy's site is root's; the app only asks for it (msd-caddy.path)
 install -d -m 711 "$UPD_WORK"
 install -d -m 755 "$UPD_WORK/public"
 install -d -m 755 "$ETC"
@@ -71,6 +71,7 @@ ln -sfn "$TARGET" "$APP_ROOT/current.new" && mv -T "$APP_ROOT/current.new" "$APP
 
 echo "==> Update service"
 install -m 755 "$TARGET/updater/msd-updater.py" "$LIB/msd-updater.py"
+install -m 755 "$TARGET/scripts/msd-caddy.py" "$LIB/msd-caddy.py"
 python3 - "$ETC/updater.json" "$REPO" "$APP_ROOT" "$DATA" "$UPD_WORK" "$LIB" <<'PY'
 import json, os, sys
 path, repo, app_root, data, work, lib = sys.argv[1:7]
@@ -101,7 +102,8 @@ try:
         c = json.load(f)
 except (OSError, ValueError):
     c = {}
-c.update({"port": c.get("port", 8900), "bind": "127.0.0.1", "trusted_proxies": ["127.0.0.1"], "caddy_site_file": site})
+c.update({"port": c.get("port", 8900), "bind": "127.0.0.1", "trusted_proxies": ["127.0.0.1"], "caddy_managed": True})
+c.pop("caddy_site_file", None)  # the app no longer writes Caddy's site itself
 if os.path.exists(preseed):
     with open(preseed) as f:
         extra = json.load(f)
@@ -117,10 +119,9 @@ chown msd:msd "$DATA/config.json"
 if [ -f "$DATA/pve-root-ca.pem" ]; then chown msd:msd "$DATA/pve-root-ca.pem"; chmod 644 "$DATA/pve-root-ca.pem"; fi
 
 echo "==> Caddy"
-if [ ! -s "$SITE" ]; then
-  printf '%s\nhttp:// {\n    reverse_proxy 127.0.0.1:8900\n}\n' "# Written by the dashboard's setup wizard; changes here are overwritten." > "$SITE"
-fi
-chown msd:caddy "$SITE"
+# The site comes from the saved settings, through the root helper (also keeps a domain set up before).
+MSD_CADDY_NO_RELOAD=1 python3 "$LIB/msd-caddy.py" "$DATA/config.json" "$SITE"
+chown root:root "$SITE"
 chmod 644 "$SITE"
 cat > /etc/caddy/Caddyfile <<EOF
 # Managed by media-server-dashboard. The site itself is in $SITE (written by the setup wizard).
@@ -128,6 +129,23 @@ import $SITE
 EOF
 
 echo "==> systemd"
+# Extra sandboxing for the app; if this container's systemd can't apply it, the install falls back below.
+HARDENING="ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+PrivateDevices=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077"
+write_app_unit() {
 cat > /etc/systemd/system/$SVC.service <<EOF
 [Unit]
 Description=Media Server Dashboard
@@ -145,29 +163,38 @@ NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
-ReadWritePaths=$DATA $SITE_DIR
+ReadWritePaths=$DATA
+$1
 
 [Install]
 WantedBy=multi-user.target
 EOF
-# Reload Caddy whenever the wizard writes a new site (domain, HTTPS mode).
-cat > /etc/systemd/system/msd-caddy-reload.path <<EOF
+}
+write_app_unit "$HARDENING"
+# When the wizard saves, the root helper writes Caddy's site from the checked settings and reloads Caddy.
+systemctl disable --now msd-caddy-reload.path >/dev/null 2>&1 || true
+rm -f /etc/systemd/system/msd-caddy-reload.path /etc/systemd/system/msd-caddy-reload.service
+cat > /etc/systemd/system/msd-caddy.path <<EOF
 [Unit]
-Description=Reload Caddy when the dashboard changes its site
+Description=Media Server Dashboard: Caddy site requests
 
 [Path]
-PathChanged=$SITE
+PathChanged=$DATA/caddy-request
+Unit=msd-caddy.service
 
 [Install]
 WantedBy=multi-user.target
 EOF
-cat > /etc/systemd/system/msd-caddy-reload.service <<EOF
+cat > /etc/systemd/system/msd-caddy.service <<EOF
 [Unit]
-Description=Reload Caddy for the dashboard
+Description=Media Server Dashboard: write Caddy's site from the settings
 
 [Service]
 Type=oneshot
-ExecStart=/bin/systemctl reload-or-restart caddy
+ExecStart=/usr/bin/python3 $LIB/msd-caddy.py $DATA/config.json $SITE
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateTmp=yes
 EOF
 # The update service: started when the app leaves a request, and once a day to look for releases.
 cat > /etc/systemd/system/msd-updater.path <<EOF
@@ -189,6 +216,14 @@ Description=Media Server Dashboard update service
 Type=oneshot
 ExecStart=/usr/bin/python3 $LIB/msd-updater.py run-request
 TimeoutStartSec=15min
+# root, but kept away from what it doesn't need; cosign itself runs as nobody
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictRealtime=yes
+LockPersonality=yes
 EOF
 cat > /etc/systemd/system/msd-updater-check.service <<EOF
 [Unit]
@@ -211,10 +246,22 @@ Persistent=true
 WantedBy=timers.target
 EOF
 systemctl daemon-reload
-systemctl enable --now caddy msd-caddy-reload.path msd-updater.path msd-updater-check.timer >/dev/null 2>&1
+systemctl enable --now caddy msd-caddy.path msd-updater.path msd-updater-check.timer >/dev/null 2>&1
 systemctl reload-or-restart caddy
 systemctl enable $SVC >/dev/null 2>&1
 systemctl restart $SVC
+# Did the sandboxed app come up? If not, this container can't apply all of it: fall back and say so.
+up=""
+for _ in $(seq 1 20); do
+  if curl -fsS -o /dev/null http://127.0.0.1:8900/healthz; then up=1; break; fi
+  sleep 0.5
+done
+if [ -z "$up" ]; then
+  echo "    The extra sandboxing doesn't work in this container; using the basic one." >&2
+  write_app_unit ""
+  systemctl daemon-reload
+  systemctl restart $SVC
+fi
 
 for _ in $(seq 1 20); do
   if [ -f "$DATA/setup-token.txt" ] || grep -q '"hash"' "$DATA/config.json" 2>/dev/null; then break; fi
