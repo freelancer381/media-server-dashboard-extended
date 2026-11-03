@@ -5,6 +5,8 @@ becomes its GitHub release text, so write it for the people who run the dashboar
 
 ## Unreleased
 
+## 0.4.0 - 2026-11-03
+
 Added:
 - qBittorrent and rdtclient (Real-Debrid / AllDebrid) as download clients: speed, queue, finished and failed downloads in the live feed, Radarr's and Sonarr's titles for each torrent. rdtclient speaks qBittorrent's Web API, so both sign in with user and password (or none, with qBittorrent's "Bypass authentication" for the dashboard's address).
 - Several download clients at once, for example SABnzbd plus qBittorrent or rdtclient plus qBittorrent: the download card, speed graph and parcel pile add them up, each worker in the office shows its own queue, and pauses and failures are reported per client.
