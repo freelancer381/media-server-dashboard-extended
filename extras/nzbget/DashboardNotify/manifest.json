@@ -1,7 +1,7 @@
 {
   "main": "main.py",
   "name": "DashboardNotify",
-  "homepage": "https://github.com/lcsfls/media-server-dashboard-extended",
+  "homepage": "https://github.com/freelancer381/media-server-dashboard-extended",
   "kind": "POST-PROCESSING",
   "displayName": "Media Server Dashboard",
   "version": "1.0.0",

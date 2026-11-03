@@ -36,7 +36,7 @@ def main():
     ap.add_argument("--version", required=True)
     ap.add_argument("--out", default="dist")
     ap.add_argument("--ref", default="HEAD")
-    ap.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", "lcsfls/media-server-dashboard-extended"))
+    ap.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", "freelancer381/media-server-dashboard-extended"))
     a = ap.parse_args()
     if not re.fullmatch(r"\d+\.\d+\.\d+", a.version):
         sys.exit("version must be X.Y.Z")

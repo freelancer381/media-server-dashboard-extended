@@ -89,7 +89,7 @@ UPDATER_CONF = os.environ.get("MSD_UPDATER_CONF") or "/etc/media-server-dashboar
 UPDATE_DIR = os.path.join(DATA, "updater")
 MODE = os.environ.get("MSD_MODE") or ""  # "docker" in the container image
 # Where releases come from. Without the update service (Docker, by hand) the app only says that one is out.
-RELEASE_REPO = os.environ.get("MSD_UPDATE_REPO", "lcsfls/media-server-dashboard-extended")
+RELEASE_REPO = os.environ.get("MSD_UPDATE_REPO", "freelancer381/media-server-dashboard-extended")
 notice = {}
 
 # The apps the dashboard knows by heart. Anything else is a custom app: "arr" (Lidarr, Readarr, Whisparr...)

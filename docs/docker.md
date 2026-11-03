@@ -1,13 +1,13 @@
 # Installing with Docker
 
-The image `ghcr.io/lcsfls/media-server-dashboard-extended` holds just Python and the dashboard
+The image `ghcr.io/freelancer381/media-server-dashboard-extended` holds just Python and the dashboard
 (amd64 and arm64). Every release image is signed by the release workflow (Sigstore).
 
 ## Docker Compose
 
 ```bash
 mkdir media-dashboard && cd media-dashboard
-curl -fsSLO https://raw.githubusercontent.com/lcsfls/media-server-dashboard-extended/main/docker-compose.yml
+curl -fsSLO https://raw.githubusercontent.com/freelancer381/media-server-dashboard-extended/main/docker-compose.yml
 mkdir data && sudo chown 1000:1000 data
 docker compose up -d
 docker compose logs dashboard     # shows the setup token
@@ -20,7 +20,7 @@ The `docker-compose.yml`:
 ```yaml
 services:
   dashboard:
-    image: ghcr.io/lcsfls/media-server-dashboard-extended:latest   # or a fixed version, e.g. :0.2
+    image: ghcr.io/freelancer381/media-server-dashboard-extended:latest   # or a fixed version, e.g. :0.2
     container_name: media-server-dashboard
     restart: unless-stopped
     ports:
@@ -37,7 +37,7 @@ Without Compose:
 ```bash
 docker run -d --name media-server-dashboard --restart unless-stopped \
   -p 8900:8900 -v "$PWD/data:/data" -e TZ=Europe/Berlin \
-  ghcr.io/lcsfls/media-server-dashboard-extended:latest
+  ghcr.io/freelancer381/media-server-dashboard-extended:latest
 ```
 
 ## Settings through environment variables
@@ -46,7 +46,7 @@ docker run -d --name media-server-dashboard --restart unless-stopped \
 |---|---|---|
 | `MSD_PORT` | `8900` | port inside the container |
 | `MSD_TRUSTED_PROXIES` | empty | comma-separated addresses of your reverse proxy, as the container sees them |
-| `MSD_UPDATE_REPO` | `lcsfls/media-server-dashboard-extended` | where to look for new releases (a notice only) |
+| `MSD_UPDATE_REPO` | `freelancer381/media-server-dashboard-extended` | where to look for new releases (a notice only) |
 | `TZ` | UTC | time zone for the feed and today's numbers |
 
 Everything else is set in the wizard and stored in `/data/config.json`.
@@ -103,15 +103,15 @@ also needs `tuf-repo-cdn.sigstore.dev`.
 Checking the image signature:
 
 ```bash
-cosign verify ghcr.io/lcsfls/media-server-dashboard-extended:0.2.0 \
-  --certificate-identity "https://github.com/lcsfls/media-server-dashboard-extended/.github/workflows/release.yml@refs/tags/v0.2.0" \
+cosign verify ghcr.io/freelancer381/media-server-dashboard-extended:0.2.0 \
+  --certificate-identity "https://github.com/freelancer381/media-server-dashboard-extended/.github/workflows/release.yml@refs/tags/v0.2.0" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
 ## Building it yourself
 
 ```bash
-git clone https://github.com/lcsfls/media-server-dashboard-extended.git && cd media-server-dashboard-extended
+git clone https://github.com/freelancer381/media-server-dashboard-extended.git && cd media-server-dashboard-extended
 docker build --build-arg VERSION="$(cat VERSION)" -t media-server-dashboard .
 ```
 

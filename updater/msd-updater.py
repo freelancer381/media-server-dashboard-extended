@@ -31,7 +31,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
-UPDATER_VERSION = "1.1.0"
+UPDATER_VERSION = "1.2.0"
 CONF_FILE = os.environ.get("MSD_UPDATER_CONF") or "/etc/media-server-dashboard/updater.json"
 VERSION_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 ISSUER = "https://token.actions.githubusercontent.com"
@@ -124,8 +124,23 @@ class Updater:
             raise Failed(f"download too large: {url}")
         return data
 
+    def repo(self):
+        """The repository's current name. GitHub forwards a moved or renamed repository (same repository, new
+        owner or name), so its API names the one whose release workflow signs from now on."""
+        if not getattr(self, "_repo", None):
+            self._repo = self.c["repo"]
+            try:
+                name = json.loads(self._get(f"{self.c['api']}/repos/{self.c['repo']}")).get("full_name") or ""
+                if re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", name):
+                    if name.lower() != self.c["repo"].lower():
+                        self.log(f"The repository moved: {self.c['repo']} → {name}")
+                    self._repo = name
+            except (OSError, ValueError, urllib.error.URLError):
+                pass
+        return self._repo
+
     def releases(self):
-        data = json.loads(self._get(f"{self.c['api']}/repos/{self.c['repo']}/releases?per_page=30"))
+        data = json.loads(self._get(f"{self.c['api']}/repos/{self.repo()}/releases?per_page=30"))
         out = []
         for r in data:
             tag = r.get("tag_name") or ""
@@ -137,7 +152,7 @@ class Updater:
         return sorted(out, key=lambda r: vtuple(r["tag_name"][1:]), reverse=True)
 
     def release(self, version):
-        return json.loads(self._get(f"{self.c['api']}/repos/{self.c['repo']}/releases/tags/v{version}"))
+        return json.loads(self._get(f"{self.c['api']}/repos/{self.repo()}/releases/tags/v{version}"))
 
     def asset(self, rel, name, limit=50_000_000):
         for a in rel.get("assets") or []:
@@ -155,10 +170,11 @@ class Updater:
         with open(b, "wb") as f:
             f.write(bundle)
         tag = f"v{version}"
-        identity = f"https://github.com/{self.c['repo']}/{self.c['workflow']}@refs/tags/{tag}"
+        repo = self.repo()
+        identity = f"https://github.com/{repo}/{self.c['workflow']}@refs/tags/{tag}"
         cmd = [self.c["cosign"], "verify-blob", "--bundle", b,
                "--certificate-identity", identity, "--certificate-oidc-issuer", ISSUER,
-               "--certificate-github-workflow-repository", self.c["repo"],
+               "--certificate-github-workflow-repository", repo,
                "--certificate-github-workflow-ref", f"refs/tags/{tag}",
                "--certificate-github-workflow-trigger", "push", d]
         try:

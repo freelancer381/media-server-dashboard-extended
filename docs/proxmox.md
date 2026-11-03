@@ -12,7 +12,7 @@ On the Proxmox host (shell in the web UI or over SSH), as root:
 
 ```bash
 apt install -y git whiptail
-git clone https://github.com/lcsfls/media-server-dashboard-extended.git /root/media-server-dashboard
+git clone https://github.com/freelancer381/media-server-dashboard-extended.git /root/media-server-dashboard
 bash /root/media-server-dashboard/proxmox/install-lxc.sh
 ```
 

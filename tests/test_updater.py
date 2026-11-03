@@ -61,6 +61,8 @@ class FakeGitHub:
                     except OSError:
                         v = None
                     return self.send(json.dumps({"version": outer.health_override or v}).encode())
+                if p in (f"/repos/{REPO}", "/repos/old/dash"):  # GitHub forwards a moved repository
+                    return self.send(json.dumps({"full_name": REPO}).encode())
                 if p.startswith(f"/repos/{REPO}/releases/tags/"):
                     tag = p.rsplit("/", 1)[1]
                     r = next((r for r in outer.releases if r["tag_name"] == tag), None)
@@ -323,6 +325,13 @@ echo "error: wrong identity: $args" >&2; exit 1
         u = self.updater()
         u.install("0.3.0")
         self.assertEqual(open(mine).read(), "keep")
+
+    def test_follows_a_moved_repository(self):
+        self.gh.add("0.3.0")
+        u = self.updater(repo="old/dash")  # installed before the move; the signatures now come from acme/dash
+        u.check()
+        self.assertEqual(u.status["available"]["version"], "0.3.0", u.status)
+        self.assertIn("moved", " ".join(u.status["log"]))
 
     def test_versions(self):
         self.assertTrue(U.satisfies("1.0.0", ">=1.0.0 <2.0.0"))

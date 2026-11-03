@@ -5,6 +5,9 @@ becomes its GitHub release text, so write it for the people who run the dashboar
 
 ## Unreleased
 
+- The project moved to github.com/freelancer381/media-server-dashboard-extended; images are now `ghcr.io/freelancer381/media-server-dashboard-extended`.
+- The update service follows a moved repository (GitHub forwards it) and checks signatures against the repository's current name, so installations keep updating after the move.
+
 - HEAD requests are answered like GET without a body (`curl -I`, uptime monitors) instead of "501 Not Implemented".
 
 ## 0.3.2 - 2026-11-03

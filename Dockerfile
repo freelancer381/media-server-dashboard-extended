@@ -7,7 +7,7 @@ FROM python:3.13-slim
 ARG VERSION=dev
 LABEL org.opencontainers.image.title="Media Server Dashboard" \
       org.opencontainers.image.description="Dashboard and 3D office for a homelab media stack (Proxmox, *arr apps)" \
-      org.opencontainers.image.source="https://github.com/lcsfls/media-server-dashboard-extended" \
+      org.opencontainers.image.source="https://github.com/freelancer381/media-server-dashboard-extended" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.version="${VERSION}"
 

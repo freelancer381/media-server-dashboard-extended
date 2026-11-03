@@ -31,7 +31,7 @@ The container writes to `data` as a user with uid 1000. Two ways:
 ```yaml
 services:
   dashboard:
-    image: ghcr.io/lcsfls/media-server-dashboard-extended:latest
+    image: ghcr.io/freelancer381/media-server-dashboard-extended:latest
     container_name: media-server-dashboard
     restart: unless-stopped
     user: "1026:100"            # your uid:gid from step 2 (or drop the line if you ran chown 1000)
@@ -84,7 +84,7 @@ project.
 When **Settings → Updates** reports a new version:
 
 **Container Manager → Project → media-dashboard → Action → Stop**, then
-**Image → ghcr.io/lcsfls/media-server-dashboard-extended → Update** (or "Update available"),
+**Image → ghcr.io/freelancer381/media-server-dashboard-extended → Update** (or "Update available"),
 then **Start** the project again. Or over SSH in the project folder:
 
 ```bash

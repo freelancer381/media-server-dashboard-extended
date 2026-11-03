@@ -9,7 +9,7 @@
 # from $REPO (branch $BRANCH) inside the container.
 set -euo pipefail
 
-REPO="${REPO:-https://github.com/lcsfls/media-server-dashboard-extended.git}"
+REPO="${REPO:-https://github.com/freelancer381/media-server-dashboard-extended.git}"
 BRANCH="${BRANCH:-main}"
 STAGE=/root/msd-src
 DATA=/var/lib/media-server-dashboard

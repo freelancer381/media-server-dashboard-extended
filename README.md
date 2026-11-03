@@ -60,7 +60,7 @@ addresses, with instructions per app, are under **Settings → Live feed**, read
 
 ## Updates and releases
 
-The pipeline follows the ideas of [garnet-ops](https://github.com/lcsfls/garnet-ops):
+The pipeline works like a signed-release update sidecar:
 
 1. `scripts/release.sh 0.3.0` sets `VERSION`, turns "Unreleased" in the [CHANGELOG](CHANGELOG.md) into the release's section, commits and tags.
 2. `git push origin main v0.3.0` starts [`.github/workflows/release.yml`](.github/workflows/release.yml). It runs the whole CI (Debian 12 and 13), builds the archive and `release.json` with its SHA-256 and the [release policy](.release-policy.json), and **signs `release.json` keyless with Sigstore** under its own identity. Then it builds the container image for amd64 and arm64, tests, signs and verifies it, and only then publishes the GitHub release.
@@ -72,8 +72,8 @@ Installing needs the password; automatic installation at a set hour can be switc
 To check an image by hand:
 
 ```bash
-cosign verify ghcr.io/lcsfls/media-server-dashboard-extended:0.2.0 \
-  --certificate-identity "https://github.com/lcsfls/media-server-dashboard-extended/.github/workflows/release.yml@refs/tags/v0.2.0" \
+cosign verify ghcr.io/freelancer381/media-server-dashboard-extended:0.2.0 \
+  --certificate-identity "https://github.com/freelancer381/media-server-dashboard-extended/.github/workflows/release.yml@refs/tags/v0.2.0" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 

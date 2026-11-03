@@ -6,7 +6,7 @@
 # Updates: docker compose pull && docker compose up -d
 services:
   dashboard:
-    image: ghcr.io/lcsfls/media-server-dashboard-extended:latest
+    image: ghcr.io/freelancer381/media-server-dashboard-extended:latest
     # Or build it from this folder instead: comment out "image" and use "build: ."
     container_name: media-server-dashboard
     restart: unless-stopped
