@@ -24,6 +24,7 @@ import os
 import re
 import shutil
 import subprocess
+import stat
 import sys
 import tarfile
 import time
@@ -31,7 +32,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
-UPDATER_VERSION = "1.3.0"
+UPDATER_VERSION = "1.3.1"
 CONF_FILE = os.environ.get("MSD_UPDATER_CONF") or "/etc/media-server-dashboard/updater.json"
 VERSION_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 ISSUER = "https://token.actions.githubusercontent.com"
@@ -168,6 +169,8 @@ class Updater:
         shutil.rmtree(workdir, ignore_errors=True)
         os.makedirs(workdir, mode=0o700)
         d, b = os.path.join(workdir, "release.json"), os.path.join(workdir, "release.json.sigstore.json")
+        home = os.path.join(workdir, "home")  # cosign keeps Sigstore's trust root here
+        os.makedirs(home, mode=0o700)
         with open(d, "wb") as f:
             f.write(doc)
         with open(b, "wb") as f:
@@ -185,17 +188,34 @@ class Updater:
         if user and os.geteuid() == 0:
             import pwd
             pw = pwd.getpwnam(user)
-            for path in (workdir, d, b):
-                os.chown(path, pw.pw_uid, pw.pw_gid)
+            # The files stay root's (cosign only reads them), only its home is its own. The work folder and
+            # the ones above it are root's 0700: let it pass through them, without seeing what is in them.
+            self.passable(workdir)
+            os.chmod(workdir, 0o755)
+            for path in (d, b):
+                os.chmod(path, 0o644)
+            os.chown(home, pw.pw_uid, pw.pw_gid)
             drop = {"user": pw.pw_uid, "group": pw.pw_gid, "extra_groups": []}
-        env = {"PATH": "/usr/bin:/bin", "HOME": workdir, **{k: v for k, v in os.environ.items() if k in ("HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "SSL_CERT_FILE")}}
+        env = {"PATH": "/usr/bin:/bin", "HOME": home, **{k: v for k, v in os.environ.items() if k in ("HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "SSL_CERT_FILE")}}
         try:
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=180, env=env, cwd=workdir, **drop)
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=180, env=env, cwd=home, **drop)
         except (OSError, subprocess.TimeoutExpired) as e:
             raise Refused(f"cosign could not run: {e}")
         if r.returncode != 0:
             out = (r.stderr or r.stdout).strip().splitlines()
             raise Refused("invalid signature" + (f": {out[-1][:300]}" if out else ""))
+
+    def passable(self, path):
+        """Others may pass through (x, not r) the folders from the work folder down to `path`."""
+        top = os.path.realpath(self.c["work_dir"])
+        p = os.path.realpath(os.path.dirname(path))
+        while p == top or p.startswith(top + os.sep):
+            st = os.lstat(p)
+            if stat.S_ISDIR(st.st_mode) and st.st_uid == 0 and not st.st_mode & 0o001:
+                os.chmod(p, stat.S_IMODE(st.st_mode) | 0o011)
+            if p == top:
+                break
+            p = os.path.dirname(p)
 
     def evaluate(self, version, doc, current):
         """Read the signed release.json and its upgrade policy. Raises Refused with the reason."""

@@ -333,6 +333,38 @@ echo "error: wrong identity: $args" >&2; exit 1
         self.assertEqual(u.status["available"]["version"], "0.3.0", u.status)
         self.assertIn("moved", " ".join(u.status["log"]))
 
+    @unittest.skipUnless(hasattr(os, "geteuid") and os.geteuid() == 0, "needs root to run cosign as nobody")
+    def test_cosign_as_nobody_reaches_its_files(self):
+        """As installed: root's work folder is 0700, cosign runs as nobody and must still read release.json
+        and write its trust root, but nothing else in the work folder."""
+        os.chmod(self.tmp.name, 0o711)  # like /var/lib
+        os.makedirs(self.work, mode=0o700)
+        os.makedirs(f"{self.work}/backups", mode=0o700)
+        bindir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, bindir, True)
+        os.chmod(bindir, 0o755)
+        cosign = f"{bindir}/cosign"
+        with open(cosign, "w") as f:
+            f.write(f"""#!/bin/sh
+[ "$(id -un)" = nobody ] || {{ echo "error: not nobody" >&2; exit 1; }}
+for a in "$@"; do last="$a"; done
+grep -q '"version"' "$last" || {{ echo "error: cannot read $last" >&2; exit 1; }}
+mkdir -p "$HOME/.sigstore" && touch "$HOME/.sigstore/root.json" || {{ echo "error: home not writable" >&2; exit 1; }}
+ls {self.work}/backups >/dev/null 2>&1 && {{ echo "error: could see the backups" >&2; exit 1; }}
+echo x >> "$last" 2>/dev/null && {{ echo "error: could change release.json" >&2; exit 1; }}
+exec {self.cosign} "$@"
+""")
+        os.chmod(cosign, 0o755)
+        os.chmod(self.cosign, 0o755)
+        self.gh.add("0.3.0")
+        u = self.updater(cosign=cosign, verify_user="nobody")
+        u.check()
+        self.assertEqual(u.status["refused"], [])
+        self.assertEqual(u.status["available"]["version"], "0.3.0")
+        u.install("0.3.0", "test")
+        self.assertEqual(self.current(), "0.3.0")
+        self.assertEqual(stat.S_IMODE(os.stat(f"{self.work}/backups").st_mode), 0o700)  # still root's alone
+
     def test_versions(self):
         self.assertTrue(U.satisfies("1.0.0", ">=1.0.0 <2.0.0"))
         self.assertFalse(U.satisfies("2.0.0", ">=1.0.0 <2.0.0"))

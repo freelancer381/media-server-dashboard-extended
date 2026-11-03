@@ -5,6 +5,10 @@ becomes its GitHub release text, so write it for the people who run the dashboar
 
 ## Unreleased
 
+Fixed:
+- Updates were refused with "invalid signature: … release.json: permission denied" since 0.3.5. The signature check runs as an unprivileged user, which couldn't reach its files inside the update service's folder. It now can, and still sees nothing else there (update service 1.3.1).
+- Because the update service itself can't check releases until then, update to this release from the Proxmox host once: `cd /root/media-server-dashboard && git pull`, then `bash proxmox/install-lxc.sh --update <CTID>`.
+
 ## 0.4.0 - 2026-11-03
 
 Added:
