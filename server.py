@@ -1481,6 +1481,13 @@ class Handler(BaseHTTPRequestHandler):
     def json(self, code, obj):
         self.reply(code, json.dumps(obj).encode(), "application/json")
 
+    def do_HEAD(self):
+        """The same answers as GET without the body (curl -I, uptime monitors). Never holds the live stream open."""
+        self.head_only = True
+        if self.path.split("?")[0] == "/api/stream":
+            return self.reply(200 if self.authed() else 401, b"", "text/event-stream")
+        return self.do_GET()
+
     def do_GET(self):
         path = self.path.split("?")[0]
         if path == "/healthz":
@@ -1695,7 +1702,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
         self.end_headers()
-        self.wfile.write(body)
+        if not getattr(self, "head_only", False):
+            self.wfile.write(body)
 
     def log_message(self, *args):
         pass

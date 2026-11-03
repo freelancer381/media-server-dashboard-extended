@@ -5,6 +5,8 @@ becomes its GitHub release text, so write it for the people who run the dashboar
 
 ## Unreleased
 
+- HEAD requests are answered like GET without a body (`curl -I`, uptime monitors) instead of "501 Not Implemented".
+
 ## 0.3.2 - 2026-11-03
 
 - Address: a new option "Behind my own reverse proxy" (Nginx Proxy Manager, Traefik, Synology …). The container then serves plain HTTP without redirects, so the proxy's HTTPS no longer loops ("too many redirects"); the login lockout sees the real visitor and the cookie is marked secure.
