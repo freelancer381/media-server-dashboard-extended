@@ -27,6 +27,8 @@ header a { margin-left: auto; color: var(--text); text-decoration: none; font-si
 header a + a { margin-left: 0; }
 #summary { color: var(--muted); font-size: 13px; }
 .hint { position: absolute; left: 0; right: 0; bottom: 6px; color: var(--muted); font-size: 12px; text-align: center; pointer-events: none; }
+.reset-view { pointer-events: auto; margin-left: 8px; font: inherit; color: var(--text, #fff); background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 999px; padding: 2px 10px; cursor: pointer; }
+.reset-view:hover { background: rgba(255, 255, 255, 0.16); }
 .glass, #tip { background: var(--glass); border: 1px solid var(--edge); -webkit-backdrop-filter: blur(28px) saturate(170%); backdrop-filter: blur(28px) saturate(170%); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .16), 0 10px 30px rgba(0, 0, 0, .22); }
 
 #stage { display: flex; gap: 14px; }
@@ -177,7 +179,7 @@ table.home .icon { width: 22px; height: 22px; font-size: 14px; border-radius: 6p
 <div id="page">
   <header><h1>The Office</h1><span id="summary"></span><span class="conn" id="conn" role="status" hidden></span><a id="updateLink" class="glass update-link" href="/setup#updates" hidden></a><a class="glass" href="/">← Dashboard</a></header>
   <div id="stage">
-    <div id="scene"><div id="labels"></div><div class="hint">Drag to turn the room · scroll or pinch to zoom</div>
+    <div id="scene"><div id="labels"></div><div class="hint">Drag to turn the room · scroll or pinch to zoom · right-drag or two fingers to move <button id="resetView" class="reset-view" hidden>⟲ Reset view</button></div>
       <section id="feed" class="glass" aria-label="Live feed">
         <header role="tablist"><button role="tab" aria-selected="true" data-tab="chat">💬 Live</button><button role="tab" aria-selected="false" data-tab="team" id="teamTab">🏆 Team</button>
           <button class="clear" id="feedClear" title="Dismiss all messages">Clear</button><span class="live" id="liveDot" title="Live connection"><i></i><span>live</span></span><button class="fold" id="feedFold" aria-label="Show the whole feed">▾</button></header>
@@ -213,13 +215,18 @@ camera.position.set(29, 20, 32);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.set(0, 1.0, 0);
 controls.enableDamping = true;
-controls.enablePan = false;
+// Turn, zoom towards the pointer and move (right mouse button or two fingers), down to an almost level
+// view, so the boards and posters on the walls can be read up close.
+controls.enablePan = true;
+controls.screenSpacePanning = true;
+controls.zoomToCursor = true;
 controls.minPolarAngle = 0.55;
-controls.maxPolarAngle = 1.2;
+controls.maxPolarAngle = 1.5;
 controls.minAzimuthAngle = -0.15;
 controls.maxAzimuthAngle = Math.PI / 2 + 0.15;
 controls.minZoom = 0.8;
-controls.maxZoom = 3.5;
+controls.maxZoom = 8;
+const HOME_VIEW = { target: controls.target.clone(), position: camera.position.clone() };
 
 scene.add(new THREE.HemisphereLight(0xffffff, 0xcdbfae, 1.45));
 const sun = new THREE.DirectionalLight(0xfff1e0, 2.4);
@@ -238,13 +245,19 @@ scene.add(lampGlow);
 const ROOM_CORNERS = [];
 for (const x of [-12.4, 12.4]) for (const z of [-9.4, 9.4]) ROOM_CORNERS.push(new THREE.Vector3(x, -0.85, z), new THREE.Vector3(x, 0, z));
 ROOM_CORNERS.push(new THREE.Vector3(-12.4, 3.65, -9.4), new THREE.Vector3(12.4, 3.65, -9.4), new THREE.Vector3(-12.4, 3.65, 9.4));
-const corner = new THREE.Vector3();
+const corner = new THREE.Vector3(), moved = new THREE.Vector3();
+const ROOM_MIN = new THREE.Vector3(-11.5, 0, -8.8), ROOM_MAX = new THREE.Vector3(11.5, 3.2, 8.8);
 function fitView() {
+  // Moving the view must not leave the room: keep the point it circles inside, camera alongside.
+  moved.copy(controls.target).clamp(ROOM_MIN, ROOM_MAX).sub(controls.target);
+  if (moved.lengthSq()) { controls.target.add(moved); camera.position.add(moved); }
+  // The room is framed as if the view hadn't moved; moving then really moves it.
+  moved.copy(controls.target).sub(HOME_VIEW.target);
   const w = host.clientWidth, h = host.clientHeight, aspect = w / h;
   camera.updateMatrixWorld();
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
   for (const p of ROOM_CORNERS) {
-    corner.copy(p).applyMatrix4(camera.matrixWorldInverse);
+    corner.copy(p).add(moved).applyMatrix4(camera.matrixWorldInverse);
     x0 = Math.min(x0, corner.x); x1 = Math.max(x1, corner.x); y0 = Math.min(y0, corner.y); y1 = Math.max(y1, corner.y);
   }
   y1 += (y1 - y0) * 0.05;  // space for the name tags along the top
@@ -254,7 +267,21 @@ function fitView() {
   Object.assign(camera, { left: cx - hw, right: cx + hw, top: cy + hh, bottom: cy - hh });
   camera.updateProjectionMatrix();
 }
-controls.addEventListener('change', fitView);
+controls.addEventListener('change', () => {
+  fitView();
+  const off = camera.zoom > 1.02 || controls.target.distanceTo(HOME_VIEW.target) > 0.05 || camera.position.distanceTo(HOME_VIEW.position) > 0.5;
+  $('resetView').hidden = !off;
+});
+$('resetView').onclick = () => {
+  controls.enableDamping = false;
+  controls.update();  // use up what is left of the last drag, so nothing glides on afterwards
+  controls.target.copy(HOME_VIEW.target);
+  camera.position.copy(HOME_VIEW.position);
+  camera.zoom = 1;
+  camera.updateProjectionMatrix();
+  controls.update();
+  controls.enableDamping = true;
+};
 function resize() {
   const w = host.clientWidth, h = host.clientHeight;
   camera.lookAt(controls.target);
@@ -264,6 +291,8 @@ function resize() {
 }
 addEventListener('resize', resize);
 new ResizeObserver(() => resize()).observe(host);  // the start page panel can appear beside the room
+
+const CORRIDOR_X = 0.9;  // the walkway between the desks and the break room
 
 // ---------- building blocks ----------
 const mats = new Map();
@@ -612,6 +641,53 @@ function beanBag(x, z, color, ry) {
   return m;
 }
 beanBag(9.75, 3.75, '#f3cf6a', 0.4); beanBag(10.7, 5.9, '#7fd3c0', 1); beanBag(8.5, 6.4, '#f39bb0', 2);
+
+// reading corner: two armchairs turned towards each other, a side table with a lamp and a book
+const ARMCHAIRS = [
+  { at: [2.4, 6.9], face: Math.PI / 2 - 0.35, pose: 'armchair', via: [[CORRIDOR_X, 4.6]] },
+  { at: [3.9, 6.9], face: -Math.PI / 2 + 0.35, pose: 'armchair', via: [[CORRIDOR_X, 4.6]] },
+];
+for (const [i, a] of ARMCHAIRS.entries()) {
+  // the seat is behind where the sitter's feet are
+  const c = group(a.at[0] - Math.sin(a.face) * 0.4, 0, a.at[1] - Math.cos(a.face) * 0.4, scene, a.face);
+  const col = i ? '#7fa8d6' : '#d6a35f', soft = i ? '#93b9e0' : '#e3b673';
+  rbox(1.0, 0.36, 0.9, 0.1, col, 0, 0.35, 0, c);
+  rbox(1.0, 0.72, 0.26, 0.12, col, 0, 0.78, -0.34, c);
+  for (const sx of [-1, 1]) {
+    rbox(0.2, 0.56, 0.9, 0.1, col, sx * 0.46, 0.5, 0, c);
+    for (const sz of [-0.32, 0.32]) cyl(0.04, 0.03, 0.17, '#8a5a3a', sx * 0.4, 0.085, sz, c);
+  }
+  rbox(0.64, 0.14, 0.64, 0.06, soft, 0, 0.6, 0.06, c);
+}
+const sideTable = group(3.15, 0, 7.45);
+cyl(0.32, 0.32, 0.04, '#c99a63', 0, 0.55, 0, sideTable);
+cyl(0.04, 0.05, 0.53, '#8a5a3a', 0, 0.27, 0, sideTable);
+cyl(0.18, 0.2, 0.03, '#8a5a3a', 0, 0.015, 0, sideTable);
+box(0.24, 0.05, 0.17, '#d64b4b', 0.08, 0.6, 0.05, sideTable).rotation.y = 0.4;
+cyl(0.05, 0.07, 0.04, '#2c3140', -0.12, 0.59, -0.08, sideTable);
+cyl(0.012, 0.012, 0.32, '#2c3140', -0.12, 0.76, -0.08, sideTable);
+cyl(0.06, 0.12, 0.12, '#fff1c9', -0.12, 0.95, -0.08, sideTable);
+
+// table football: a cabinet on legs, the pitch, rods with little players, handles on both long sides
+const KICKER_AT = [-1.8, 6.4];
+const kicker = group(KICKER_AT[0], 0, KICKER_AT[1]);
+rbox(1.5, 0.22, 0.82, 0.04, '#8a5a3a', 0, 0.72, 0, kicker);
+box(1.38, 0.01, 0.7, '#4caf6a', 0, 0.835, 0, kicker);
+box(0.02, 0.011, 0.7, '#ffffff', 0, 0.836, 0, kicker);
+for (const [w, d, x, z] of [[1.5, 0.06, 0, -0.38], [1.5, 0.06, 0, 0.38], [0.06, 0.82, -0.72, 0], [0.06, 0.82, 0.72, 0]]) rbox(w, 0.14, d, 0.02, '#a8714a', x, 0.9, z, kicker);
+for (const sx of [-1, 1]) box(0.02, 0.08, 0.26, '#22242c', sx * 0.69, 0.88, 0, kicker);
+for (const [x, z] of [[-0.6, -0.3], [0.6, -0.3], [-0.6, 0.3], [0.6, 0.3]]) rbox(0.08, 0.62, 0.08, 0.03, '#5c3b26', x, 0.31, z, kicker);
+const kickerRods = [];
+for (const [i, x] of [-0.52, -0.31, -0.1, 0.1, 0.31, 0.52].entries()) {
+  const rod = group(x, 0.92, 0, kicker);
+  cyl(0.012, 0.012, 1.22, '#cfd3da', 0, 0, 0, rod).rotation.x = Math.PI / 2;
+  const team = (i % 2) ? '#2f6fd6' : '#d64b4b', men = [1, 2, 3, 2, 3, 1][i];
+  for (let m = 0; m < men; m++) box(0.04, 0.1, 0.03, team, 0, -0.04, (m - (men - 1) / 2) * 0.2, rod);
+  cyl(0.025, 0.025, 0.1, '#22242c', 0, 0, (i % 2 ? 1 : -1) * 0.66, rod).rotation.x = Math.PI / 2;
+  kickerRods.push(rod);
+}
+const kickerBall = ball(0.03, '#ffffff', KICKER_AT[0], 0.87, KICKER_AT[1]);
+kickerBall.visible = false;
 plane(2.6, 1.6, new THREE.MeshStandardMaterial({ map: rug, roughness: 1, color: '#cfe4f5' }), 9.8, 0.012, 5.2, 0, -Math.PI / 2);
 
 // ---------- desks ----------
@@ -1004,7 +1080,7 @@ const BREAKS = [
   { at: [8.15, -1.2], face: -Math.PI / 2, pose: 'pingpong', via: [[6.2, 0.9], [8.15, 0.9]] },
   { at: [9.75, 3.75], face: Math.PI / 4, pose: 'beanbag' },
 ];
-const CORRIDOR = 0.9, AISLES = [-2.3, 3.4];
+const CORRIDOR = CORRIDOR_X, AISLES = [-2.3, 3.4];
 // The office has six desks. Further staff work standing at the whiteboard on the left wall and have break
 // spots of their own, so nobody shares a place (sharing made them stand inside each other).
 const BOARD_SPOTS = [-3.8, -3.0, -1.5, -0.7, 0.1].map((z) => ({ at: [-11.0, z], face: -Math.PI / 2, pose: 'stand' }));
@@ -1016,7 +1092,24 @@ const EXTRA_BREAKS = [
   { at: [4.9, 3.5], face: faceTo(4.9, 3.5, 6.2, -1.2), pose: 'coffee' },
   { at: [2.4, 5.4], face: faceTo(2.4, 5.4, 6.2, -1.2), pose: 'coffee' },
 ];
-const breakOf = (p) => p.i < BREAKS.length ? BREAKS[p.i] : EXTRA_BREAKS[(p.i - BREAKS.length) % EXTRA_BREAKS.length];
+const BEANBAGS = [BREAKS[5],
+  { at: [10.7, 5.9], face: faceTo(10.7, 5.9, 9.6, 4.9), pose: 'beanbag' },
+  { at: [8.5, 6.4], face: faceTo(8.5, 6.4, 9.7, 5.0), pose: 'beanbag' }];
+const KICKER_SPOTS = [
+  { at: [KICKER_AT[0], KICKER_AT[1] - 0.78], face: 0, pose: 'kicker', via: [[CORRIDOR, 4.6]] },
+  { at: [KICKER_AT[0], KICKER_AT[1] + 0.78], face: Math.PI, pose: 'kicker', via: [[CORRIDOR, 4.6], [-0.5, 5.6], [-0.5, KICKER_AT[1] + 0.78]] },
+];
+const COFFEE = [BREAKS[3], ...EXTRA_BREAKS];
+// Who sits where on a break is decided for everyone on a break together, in this order. The games come
+// in pairs and are only taken by two at once, so nobody plays ping pong alone.
+const BREAK_PLAN = [[BREAKS[0]], [BREAKS[1]], [BREAKS[2], BREAKS[4]], [BEANBAGS[0]], KICKER_SPOTS, [ARMCHAIRS[0]], [BEANBAGS[1]], [ARMCHAIRS[1]], [BEANBAGS[2]]];
+function breakSpots(n) {
+  const out = [];
+  for (const g of BREAK_PLAN) if (out.length + g.length <= n) out.push(...g);
+  for (let i = 0; out.length < n; i++) out.push(COFFEE[i % COFFEE.length]);  // the rest have a coffee
+  return out;
+}
+const breakOf = (p) => p.brk || COFFEE[p.i % COFFEE.length];
 
 function hairdo(head, s) {
   const hair = s.hair, hat = s.extra === 'beanie' || s.extra === 'cap';
@@ -1208,6 +1301,39 @@ function seatOf(p) {
 }
 function place(p, spot) { p.root.position.set(spot.at[0], 0, spot.at[1]); p.root.rotation.y = spot.face; p.pose = spot; }
 
+// Everyone heading for or on a break gets a spot from the plan. Who already has one of the planned spots
+// keeps it; the others are given the rest, walking over from where they are if they were on a break already.
+function planBreaks(instant) {
+  const all = Object.values(people);
+  for (const p of all) if (p.want === 'desk') { send(p, 'desk', instant); p.brk = null; }
+  const idle = all.filter((p) => p.want === 'break').sort((a, b) => a.i - b.i);
+  const spots = breakSpots(idle.length), free = [...spots];
+  const keep = new Set();
+  for (const p of idle) {
+    const k = p.brk && p.where === 'break' ? free.indexOf(p.brk) : -1;
+    if (k >= 0) { free.splice(k, 1); keep.add(p); }
+  }
+  for (const p of idle) {
+    if (keep.has(p)) continue;
+    const spot = free.shift();
+    if (p.where === 'break' && p.brk && !instant) moveBreak(p, spot);
+    else { p.brk = spot; send(p, 'break', instant); }
+  }
+}
+
+// From one break spot to another: back out the way they came in, through the open middle of the break
+// room (beside the ping pong table, clear of everything), then in to the new one.
+const BREAK_HUB = [3.3, 0.9];
+function moveBreak(p, to) {
+  const from = p.brk;
+  p.brk = to;
+  const back = p.path.length ? [] : [...(from.via || [])].reverse();
+  p.path = [...back, BREAK_HUB, ...(to.via || []), to.at].map(([x, z]) => new THREE.Vector3(x, 0, z));
+  p.done = [];
+  p.pose = null;
+  p.arrive = to;
+}
+
 function send(p, where, instant) {
   if (p.where === where) return;
   const from = p.where;
@@ -1277,10 +1403,10 @@ function animate(p, dt, t) {
     }
     return;
   }
-  const sitting = pose === 'type' || pose === 'couch' || pose === 'beanbag';
+  const sitting = pose === 'type' || pose === 'couch' || pose === 'armchair' || pose === 'beanbag';
   p.hipL.rotation.x = p.hipR.rotation.x = sitting ? -Math.PI / 2 : 0;
   p.kneeL.rotation.x = p.kneeR.rotation.x = sitting ? Math.PI / 2 : 0;
-  body.position.y = pose === 'type' ? -0.08 : pose === 'couch' ? 0.02 : pose === 'beanbag' ? -0.18 : Math.sin(t * 1.6 + p.phase) * 0.008;
+  body.position.y = pose === 'type' ? -0.08 : pose === 'couch' || pose === 'armchair' ? 0.02 : pose === 'beanbag' ? -0.18 : Math.sin(t * 1.6 + p.phase) * 0.008;
   if (pose === 'type') {
     p.shoulderL.rotation.x = -0.55 + Math.sin(t * 15 + p.phase) * 0.06;
     p.shoulderR.rotation.x = -0.55 + Math.sin(t * 15 + p.phase + 1.7) * 0.06;
@@ -1316,7 +1442,15 @@ function animate(p, dt, t) {
     p.shoulderL.rotation.x = p.shoulderR.rotation.x = -2.6;
     p.elbowL.rotation.x = p.elbowR.rotation.x = -1.9;
     head.rotation.set(0.1, Math.sin(t * 0.3 + p.phase) * 0.2, 0);
-  } else if (pose === 'couch') {
+  } else if (pose === 'kicker') {
+    // both hands on the rods, twisting them, leaning in
+    const twist = Math.sin(t * 7 + p.phase * 5);
+    body.rotation.x = 0.12;
+    p.shoulderL.rotation.x = p.shoulderR.rotation.x = -1.15;
+    p.elbowL.rotation.x = p.elbowR.rotation.x = -0.55;
+    p.shoulderL.rotation.z = 0.2 + twist * 0.12; p.shoulderR.rotation.z = -0.2 + twist * 0.12;
+    head.rotation.set(0.35, twist * 0.08, 0);
+  } else if (pose === 'couch' || pose === 'armchair') {
     body.rotation.x = -0.1;
     p.shoulderL.rotation.x = p.shoulderR.rotation.x = -0.4;
     p.elbowL.rotation.x = p.elbowR.rotation.x = -0.6;
@@ -1329,6 +1463,10 @@ function animate(p, dt, t) {
 
 // Ping pong rally between whoever is standing at the two ends.
 function rally(t) {
+  const kickers = Object.values(people).filter((p) => p.pose?.pose === 'kicker' && !p.path.length && p.root.visible).length === 2;
+  kickerBall.visible = kickers;
+  kickerRods.forEach((r, i) => { r.rotation.z = kickers ? Math.sin(t * 7 + i * 1.3) * 0.7 : 0; });
+  if (kickers) kickerBall.position.set(KICKER_AT[0] + Math.sin(t * 1.9) * 0.6, 0.87, KICKER_AT[1] + Math.sin(t * 3.1 + 1) * 0.27);
   const players = Object.values(people).filter((p) => p.pose?.pose === 'pingpong' && !p.path.length && p.root.visible);
   const playing = players.length === 2;
   pingBall.visible = playing;
@@ -1535,9 +1673,11 @@ function render(d) {
     badge.classList.toggle('error', bad || !svc.up);
     Object.assign(p, { up: svc.up, task: svc.task, issue, url: svc.url });
     p.label.querySelector('.tag').classList.toggle('link', !!svc.url);
-    if (!svc.up) { p.where = null; p.path = []; return; }
-    if (!panic && !p.panicking) send(p, svc.task ? 'desk' : 'break', first);
+    p.want = null;
+    if (!svc.up) { p.where = null; p.path = []; p.brk = null; return; }
+    if (!panic && !p.panicking) p.want = svc.task ? 'desk' : 'break';
   });
+  planBreaks(first);
   first = false;
 
   const sab = d.sab, busy = d.services.filter((s) => s.up && s.task).length, down = d.services.filter((s) => !s.up).length;
@@ -1850,7 +1990,8 @@ async function tick() {
 
 // ---------- hover popups: what someone is doing, and any problems ----------
 const tip = $('tip');
-const BREAK_TEXT = { couch: 'Relaxing on the couch', pingpong: 'Playing ping pong', coffee: 'Having a coffee', beanbag: 'Chilling on a bean bag' };
+const BREAK_TEXT = { couch: 'Relaxing on the couch', pingpong: 'Playing ping pong', coffee: 'Having a coffee', beanbag: 'Chilling on a bean bag',
+  kicker: 'Playing table football', armchair: 'Reading in the armchair' };
 function doing(p) {
   if (!p.up) return `${p.name}\nNot running` + (p.issue ? `\n⚠ ${p.issue}` : '');
   const short = (t) => (t && t.length > 70 ? t.slice(0, 67).trimEnd() + '…' : t);
