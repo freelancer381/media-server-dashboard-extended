@@ -168,6 +168,10 @@ def main():
         check(s == 200 and json.loads(d)["display"] == "fullscreen", "the web app manifest is public")
         check(c.req("GET", "/kiosk.js", headers={"Cookie": ""})[0] == 200 and c.req("GET", "/icon-192.png", headers={"Cookie": ""})[0] == 200, "and so are its script and icons")
 
+        check(c.req("POST", "/api/alerts/snooze", {"key": "Memory|Memory is running low", "for": "1d"})[0] == 200, "a problem can be hidden for a day")
+        check(c.req("POST", "/api/alerts/snooze", {"key": "Memory|Memory is running low", "for": "1d"}, headers={"Cookie": ""})[0] == 401, "but only when signed in")
+        check(c.req("POST", "/api/alerts/snooze", "key=Memory%7Cx&for=forever", ctype="application/x-www-form-urlencoded")[0] == 415, "and only as JSON")
+
         s, _, d = c.req("GET", "/api/update")
         check(s == 200 and json.loads(d)["managed"], "updates are managed")
         check(c.req("POST", "/api/update/check", {})[0] == 200, "check requested")

@@ -5,6 +5,9 @@ becomes its GitHub release text, so write it for the people who run the dashboar
 
 ## Unreleased
 
+Changed:
+- Hiding a problem banner (×) now asks for how long: 1 hour, 1 day, 1 week or for good. It stays hidden for that time even when the problem goes away and comes back in between (such as "Memory is running low"), in every browser, and it no longer posts its chat lines in the office meanwhile. "N hidden problems" under the banners lists them with "Show again". A changing number doesn't count as a new problem ("3 failed downloads" stays hidden at 4).
+
 ## 0.5.1 - 2026-11-03
 
 Fixed:

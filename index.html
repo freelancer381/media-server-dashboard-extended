@@ -58,9 +58,17 @@ nav.links { display: flex; gap: 6px; }
 #alerts { display: grid; gap: 8px; margin-bottom: 12px; }
 #alerts:empty { display: none; }
 .alert { display: flex; gap: 10px; align-items: center; padding: 9px 14px; border-radius: 14px; animation: fadeIn .3s ease-out; }
-.alert span { flex: 1; }
+.alert > span:not(.snooze) { flex: 1; }
 .dismiss { background: none; border: 0; color: var(--muted); font-size: 16px; line-height: 1; cursor: pointer; padding: 0 2px; }
 .dismiss:hover { color: var(--text); }
+.snooze { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.snooze button { font: inherit; font-size: 12px; color: var(--text); background: rgba(255, 255, 255, .1); border: 1px solid var(--edge); border-radius: 9px; padding: 3px 9px; cursor: pointer; }
+.snooze button:hover { background: rgba(255, 255, 255, .2); }
+.snooze button.cancel { background: none; border-color: transparent; color: var(--muted); }
+.hidden-alerts { margin: -4px 4px 12px; font-size: 12px; color: var(--muted); }
+.hidden-alerts summary { cursor: pointer; width: max-content; }
+.hidden-alerts .hrow { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.hidden-alerts .hrow > span:first-child { flex: 1; min-width: 200px; color: var(--text); display: inline-flex; gap: 8px; align-items: center; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } }
 .feed { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 330px; overflow-y: auto; }
 .feed li { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: start; padding: 7px 9px; border-radius: 12px; background: rgba(255, 255, 255, .04); border-left: 3px solid transparent; animation: fadeIn .3s ease-out; }
@@ -145,7 +153,7 @@ body.idle, body.idle * { cursor: none !important; }
 <body>
 <div id="page">
   <header><h1>{{TITLE}}</h1><span id="overall"></span><a id="updateLink" class="glass update-link" href="/setup#updates" hidden></a><span class="conn" id="conn" role="status" hidden></span><div id="facts"></div><nav class="links" aria-label="Pages"><a class="glass office-link hide-kiosk" href="/setup" title="Settings">⚙ Settings</a><a class="glass office-link hide-kiosk" href="/logout">Sign out</a><a class="glass office-link" href="/stats" title="Statistics">📊 Stats</a><button class="glass fs-btn" id="fs" type="button" title="Full screen (F)">⛶ Full screen</button><a class="glass office-link" href="/office">Office →</a></nav></header>
-  <div id="alerts"></div>
+  <div id="alerts"></div><div id="hiddenAlerts"></div>
   <div class="row r4">
     <section class="card mini"><div><h2>CPU</h2><div class="hero" id="cpuV">-</div></div><div class="chart" id="cpuC"></div></section>
     <section class="card mini"><div><h2>Memory</h2><div class="hero" id="memV">-</div></div><div class="chart" id="memC"></div></section>
@@ -308,16 +316,37 @@ function updateBanner(d) {
     }
   }
 }
-const alertKey = (a) => a.source + '|' + a.message;
-let dismissed = new Set();
-try { dismissed = new Set(JSON.parse(localStorage.getItem('alertsDismissed') || '[]')); } catch { /* fine */ }
-const saveDismissed = () => { try { localStorage.setItem('alertsDismissed', JSON.stringify([...dismissed])); } catch { /* fine */ } };
-document.addEventListener('click', (e) => {
-  const b = e.target.closest('.alert .dismiss');
-  if (!b) return;
-  dismissed.add(b.dataset.k); saveDismissed();
-  b.closest('.alert').remove(); html.alerts = null;
+// Hiding a problem is kept by the server: for an hour, a day, a week or for good, in every browser.
+// It doesn't come back when it goes away and returns in between (memory running low comes and goes).
+const SNOOZE = [['1h', '1 hour'], ['1d', '1 day'], ['1w', '1 week'], ['forever', 'for good']];
+try { localStorage.removeItem('alertsDismissed'); } catch { /* the old per-browser list */ }
+async function snoozeAlert(key, how) {
+  try {
+    const r = await fetch('/api/alerts/snooze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key, for: how }) });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
+  } catch (err) { (typeof toast === 'function' ? toast : alert)('Could not change that: ' + err.message); return false; }
+  html.alerts = html.hiddenAlerts = null;
+  setTimeout(tick, 150);
+  return true;
+}
+document.addEventListener('click', async (e) => {
+  const x = e.target.closest('.alert .dismiss');
+  if (x) {  // first click: how long
+    const al = x.closest('.alert');
+    al.querySelector('.snooze').hidden = false; x.hidden = true;
+    return;
+  }
+  const opt = e.target.closest('.alert .snooze button[data-for]');
+  if (opt) {
+    const al = opt.closest('.alert');
+    if (opt.dataset.for === 'cancel') { al.querySelector('.snooze').hidden = true; al.querySelector('.dismiss').hidden = false; return; }
+    if (await snoozeAlert(al.dataset.k, opt.dataset.for)) al.remove();
+    return;
+  }
+  const back = e.target.closest('.unhide');
+  if (back) await snoozeAlert(back.dataset.k, 'show');
 });
+const until = (ms) => !ms ? 'for good' : 'until ' + (new Date(ms).toDateString() === new Date().toDateString() ? '' : new Date(ms).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) + ', ') + new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 let last = null, html = {};
 // Only touch what changed, so hovering and poster images aren't disturbed by each refresh.
 function put(id, value) { if (html[id] !== value) { html[id] = value; $(id).innerHTML = value; } }
@@ -336,12 +365,14 @@ function render(d) {
   ].filter(Boolean).map((f) => `<span>${esc(f)}</span>`).join(''));
   // Service problems pop up on the service itself and missing drives show under Drives, so only the rest gets a banner.
   const elsewhere = new Set([...d.services.map((v) => v.name), 'Drives']);
-  // Dismissed banners stay away while the problem lasts and come back if it returns after being solved.
   const shown = d.alerts.filter((a) => !elsewhere.has(a.source));
-  const keys = new Set(shown.map(alertKey));
-  for (const k of [...dismissed]) if (!keys.has(k)) dismissed.delete(k);
-  saveDismissed();
-  put('alerts', shown.filter((a) => !dismissed.has(alertKey(a))).map((a) => `<div class="alert glass"><b>${pill(a.level === 'error' ? 'error' : 'warning', a.source)}</b><span>${esc(a.message)}</span><button class="dismiss" data-k="${esc(alertKey(a))}" title="Dismiss" aria-label="Dismiss">×</button></div>`).join(''));
+  // keep an open "how long" choice open while the data refreshes
+  if (document.querySelector('#alerts .snooze:not([hidden])')) html.alerts = undefined;
+  else put('alerts', shown.map((a) => `<div class="alert glass" data-k="${esc(a.key)}"><b>${pill(a.level === 'error' ? 'error' : 'warning', a.source)}</b><span>${esc(a.message)}</span>
+    <span class="snooze" hidden>Hide for ${SNOOZE.map(([k, l]) => `<button type="button" data-for="${k}">${l}</button>`).join('')}<button type="button" data-for="cancel" class="cancel">Cancel</button></span>
+    <button class="dismiss" title="Hide this problem" aria-label="Hide this problem">×</button></div>`).join(''));
+  const hid = d.hidden_alerts || [];
+  put('hiddenAlerts', hid.length ? `<details class="hidden-alerts"><summary>${hid.length} hidden problem${hid.length === 1 ? '' : 's'}</summary>${hid.map((a) => `<div class="hrow"><span>${pill(a.level === 'error' ? 'error' : 'warning', a.source)} ${esc(a.message)}</span><span class="muted small">${esc(until(a.until))}</span><button class="unhide linkbtn" data-k="${esc(a.key)}">Show again</button></div>`).join('')}</details>` : '');
 
   const cpu = h.cpu[h.cpu.length - 1] || 0;
   $('cpuV').innerHTML = `${cpu}%<small>load ${s.load ? s.load[0].toFixed(1) : '-'} of ${s.cores || '-'} cores${s.speed_limit < 100 ? ` · limited to ${s.speed_limit}%` : ''}</small>`;

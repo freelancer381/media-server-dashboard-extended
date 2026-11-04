@@ -2,6 +2,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -289,6 +290,59 @@ class LocalHost(unittest.TestCase):
                 server.history[k].clear(); server.history[k].extend(v)
             server.state["system"] = saved[1]
             server.local_cpu.clear(); server.local_cpu.update(saved[2])
+
+
+class HiddenProblems(unittest.TestCase):
+    """A dismissed problem stays hidden for the chosen time, also when it goes away and comes back in between."""
+
+    def setUp(self):
+        self.saved = (dict(server.snoozed), server.SNOOZE_FILE, server.alerts)
+        server.snoozed.clear()
+        server.SNOOZE_FILE = os.path.join(tempfile.mkdtemp(), "snoozed.json")
+        self.now = [{"level": "warning", "source": "Memory", "message": "Memory is running low"},
+                    {"level": "warning", "source": "SABnzbd", "message": "3 failed download(s) in history"}]
+        server.alerts = lambda: list(self.now)
+
+    def tearDown(self):
+        server.snoozed.clear(); server.snoozed.update(self.saved[0])
+        server.SNOOZE_FILE, server.alerts = self.saved[1], self.saved[2]
+
+    def test_hidden_for_a_while_and_for_good(self):
+        mem, sab = (server.alert_key(a) for a in self.now)
+        self.assertEqual(sab, "SABnzbd|# failed download(s) in history")  # numbers don't make it a new problem
+        server.snooze(mem, "1h")
+        server.snooze(sab, "forever")
+        shown, hidden = server.visible_alerts()
+        self.assertEqual(shown, [])
+        self.assertEqual({h["source"]: h["until"] is None for h in hidden}, {"Memory": False, "SABnzbd": True})
+        self.now = [{"level": "warning", "source": "SABnzbd", "message": "4 failed download(s) in history"}]  # memory fine again, one more failure
+        self.assertEqual(server.visible_alerts()[0], [])
+        self.now.append({"level": "warning", "source": "Memory", "message": "Memory is running low"})  # back within the hour: still hidden
+        self.assertEqual(server.visible_alerts()[0], [])
+        server.snoozed[mem] = time.time() - 1  # the hour is over
+        self.assertEqual([a["source"] for a in server.visible_alerts()[0]], ["Memory"])
+        server.snooze(sab, "show")
+        self.assertEqual(len(server.visible_alerts()[0]), 2)
+
+    def test_kept_on_disk_and_checked(self):
+        server.snooze("Memory|Memory is running low", "1w")
+        self.assertIn("Memory|Memory is running low", json.load(open(server.SNOOZE_FILE)))
+        for bad in [("no separator", "1h"), ("Memory|x", "a year")]:
+            with self.assertRaises(ValueError):
+                server.snooze(*bad)
+
+    def test_hidden_problems_make_no_chat_lines(self):
+        server.snooze("Memory|Memory is running low", "forever")
+        before = server.alert_seen
+        try:
+            server.alert_seen = {}
+            n = len(server.LIVE.recent(500))
+            server.watch_alerts()
+            texts = [e["text"] for e in server.LIVE.recent(500)[n:]]
+            self.assertNotIn("Memory is running low", texts)
+            self.assertTrue(any("failed download" in t for t in texts))
+        finally:
+            server.alert_seen = before
 
 
 class CaddyHelper(unittest.TestCase):

@@ -1317,10 +1317,72 @@ def push_loop():
                 print(f"push_loop: {type(e).__name__}: {e}", flush=True)
 
 
+# ---------- hidden problems: dismissed for a while or for good, the same in every browser ----------
+SNOOZE_FILE = os.path.join(DATA, "snoozed.json")
+snooze_lock = threading.Lock()
+SNOOZE_FOR = {"1h": 3600, "1d": 86400, "1w": 7 * 86400, "forever": 0}
+
+
+def _load_snoozed():
+    try:
+        with open(SNOOZE_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+        return {str(k)[:300]: float(v) for k, v in data.items()} if isinstance(data, dict) else {}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+snoozed = _load_snoozed()
+
+
+def alert_key(a):
+    """Which problem this is, whatever its numbers say today ("3 failed downloads" and "4 failed downloads" are one)."""
+    return f"{a['source']}|{re.sub(r'[0-9]+(?:[.,][0-9]+)?', '#', a['message'])}"
+
+
+def is_snoozed(a, now=None):
+    until = snoozed.get(alert_key(a))
+    return until is not None and (until == 0 or until > (now or time.time()))
+
+
+def snooze(key, how):
+    """Hide a problem for an hour, a day, a week or for good ("forever"); "show" brings it back."""
+    key = str(key or "")[:300]
+    if "|" not in key:
+        raise ValueError("unknown problem")
+    with snooze_lock:
+        now = time.time()
+        for k in [k for k, u in snoozed.items() if u and u <= now]:
+            del snoozed[k]  # long over
+        if how == "show":
+            snoozed.pop(key, None)
+        elif how in SNOOZE_FOR:
+            if key not in snoozed and len(snoozed) >= 200:
+                raise ValueError("too many hidden problems")
+            snoozed[key] = now + SNOOZE_FOR[how] if SNOOZE_FOR[how] else 0
+        else:
+            raise ValueError("unknown duration")
+        write_private(SNOOZE_FILE, json.dumps(snoozed))
+        payload_cache["at"] = 0  # the next page update shows it
+
+
+def visible_alerts():
+    """The problems to show and to announce, and the ones that are hidden right now."""
+    shown, hidden, now = [], [], time.time()
+    for a in alerts():
+        if is_snoozed(a, now):
+            u = snoozed.get(alert_key(a))
+            hidden.append({**a, "key": alert_key(a), "until": int(u * 1000) if u else None})
+        else:
+            shown.append({**a, "key": alert_key(a)})
+    return shown, hidden
+
+
 def watch_alerts():
     """New problems and solved problems, as chat lines from whoever has them."""
     global alert_seen
-    now = {(a["source"], a["message"]): a for a in alerts() if not (a["source"] == "Proxmox" and " is " in a["message"])}
+    # Hidden problems don't get chat lines either (otherwise "memory is running low" would keep coming and going).
+    now = {(a["source"], a["message"]): a for a in visible_alerts()[0] if not (a["source"] == "Proxmox" and " is " in a["message"])}
     if alert_seen is not None:
         for key, a in now.items():
             if key not in alert_seen:
@@ -1358,7 +1420,7 @@ def record_stats():
     for svc in state["services"]:
         if svc.get("ms") is not None:
             v["ms:" + svc["name"]] = svc["ms"]
-    v.update(alerts=len(alerts()), viewers=len(LIVE.subscribers))
+    v.update(alerts=len(visible_alerts()[0]), viewers=len(LIVE.subscribers))
     STATS.add(v, now)
     STATS.count_events(LIVE.recent(500))
     if now - stats_saved[0] > 300:
@@ -1425,14 +1487,14 @@ def stats_payload(rng):
 
 def payload():
     upcoming = sorted(state["radarr"].get("upcoming", []) + state["sonarr"].get("upcoming", []), key=lambda u: u["when"])[:8]
-    issues = alerts()
+    issues, hidden = visible_alerts()
     services = [{"name": s["name"], "up": s["up"], "url": s.get("url") or "", "issues": [a for a in issues if a["source"] == s["name"]], "task": activity(s["name"]) if s["up"] else None, "next": up_next(s["name"]) if s["up"] else []} for s in state["services"]]
     sab = state["sab"]
     if sab.get("queue"):  # downloads by the name they'll have in the library
         sab = {**sab, "queue": [{**q, "name": download_titles.get((q.get("id") or "").lower()) or tidy(q["title"])} for q in sab["queue"]]}
     body = {k: v for k, v in state.items() if k != "custom"}
     return json.dumps({
-        "title": TITLE, "now": int(time.time() * 1000), "alerts": issues, "history": {k: list(v) for k, v in history.items()},
+        "title": TITLE, "now": int(time.time() * 1000), "alerts": issues, "hidden_alerts": hidden, "history": {k: list(v) for k, v in history.items()},
         "upcoming": upcoming, **body, "services": services, "sab": sab, "home": home_payload(),
         "version": VERSION, "boot": BOOT, "update": update_brief(),
     })
@@ -2277,7 +2339,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json(401, {"ok": False, "error": "sign-in needed"})
             session_end(everyone=True)
             return self.json(200, {"ok": True})
-        if path.startswith("/api/update/") or path == "/api/game/reset":
+        if path.startswith("/api/update/") or path in ("/api/game/reset", "/api/alerts/snooze"):
             if not self.authed():
                 return self.json(401, {"ok": False, "error": "sign-in needed"})
             if not self.same_origin_json():
@@ -2312,6 +2374,12 @@ class Handler(BaseHTTPRequestHandler):
     def update_action(self, path, req):
         if path == "/api/game/reset":
             LIVE.reset()
+            return 200, {"ok": True}
+        if path == "/api/alerts/snooze":
+            try:
+                snooze(req.get("key"), req.get("for"))
+            except ValueError as e:
+                return 400, {"ok": False, "error": str(e)}
             return 200, {"ok": True}
         if path == "/api/update/settings":
             hour = int(req.get("hour", 4)) % 24
