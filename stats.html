@@ -115,7 +115,7 @@ body.idle, body.idle * { cursor: none !important; }
     <span class="muted" id="since"></span>
     <div class="ranges glass" role="group" aria-label="Time range" id="ranges"></div>
     <nav class="links" aria-label="Pages">
-      <a class="glass btn keep" href="/">← Dashboard</a><a class="glass btn" href="/office">Office</a>
+      <a class="glass btn keep" href="/">← Office</a><a class="glass btn" href="/dashboard">Dashboard</a>
       <button class="glass btn keep" id="fs" type="button" title="Full screen (F)">⛶ Full screen</button>
     </nav>
   </header>
@@ -159,7 +159,7 @@ body.idle, body.idle * { cursor: none !important; }
       <div class="card glass w4"><h2>Busiest apps</h2><div class="bars" id="sources"></div></div>
       <div class="card glass w4"><h2>How events arrive</h2><div class="bars" id="via"></div><h3>Levels</h3><div class="bars" id="levels"></div></div>
       <div class="card glass w4"><h2>Team board</h2><div class="bars" id="team"></div><div class="stat-row" id="sTeam"></div></div>
-      <div class="card glass w12"><h2>Open problems and viewers <small>active alerts, open dashboard pages</small></h2><div class="legend" id="lAl"></div><div class="chart" id="cAl"></div></div>
+      <div class="card glass w12"><h2>Streams, open problems and viewers <small>Jellyfin streams, active alerts, open dashboard pages</small></h2><div class="legend" id="lAl"></div><div class="chart" id="cAl"></div></div>
     </div>
   </section>
 
@@ -529,7 +529,8 @@ function render(d) {
   const game = d.game || {};
   barList('team', (game.players || []).slice(0, 8).map((p) => [`${p.name} · L${p.level}`, p.xp, `${(p.badges || []).length}🏅`]), (v) => num(v) + ' XP', C[3]);
   $('sTeam').innerHTML = game.enabled === false ? '<span>The team board is switched off</span>' : `<span>today <b>${num((game.today || {}).xp)} XP</b></span><span>days without errors <b>${num(game.clean_days)}</b></span>`;
-  const al = items('al', [{ name: 'Open problems', color: C[7], values: s('alerts') }, { name: 'Open pages', color: C[2], values: s('viewers') }]);
+  const al = items('al', [{ name: 'Streams', color: C[4], values: s('streams') }, { name: 'Transcoding', color: C[3], values: s('transcodes') }, { name: 'Open problems', color: C[7], values: s('alerts') }, { name: 'Open pages', color: C[2], values: s('viewers') }]
+    .filter((x) => x.name.startsWith('Open') || x.values.some((v) => v != null)));
   const drawAl = () => lineChart('cAl', { t, step, lines: al, fmt: (v) => num(v, v < 10 ? 1 : 0), band: true });
   legendFor('lAl', 'al', al, drawAl); drawAl();
 
@@ -554,8 +555,18 @@ function render(d) {
     libCards.push(`<div class="card glass w8"><h2>${esc(nice[k] || k)} in detail</h2><div class="grid" style="gap:4px 18px">${lists.filter(([, f]) => (n[f] || []).length).map(([title, f]) => `<div style="grid-column:span 6;min-width:0"><h3>${esc(title)}</h3><div class="bars" id="${id(f)}"></div></div>`).join('')}
       ${(n.added || []).length ? `<div style="grid-column:span 12"><h3>Added per month</h3><div class="chart" id="${id('added')}" style="height:120px"></div></div>` : ''}</div></div>`);
   }
+  const jf = d.jellyfin;
+  if (jf) {
+    const L = jf.library || {};
+    const plays = days.slice(-rangeDays).reduce((a, x) => a + ((x.kinds || {}).play || 0), 0);
+    libCards.push(`<div class="card glass w4"><h2>Jellyfin <small>${esc(jf.server || '')} · ${esc(jf.version || '')}</small></h2><dl class="facts">
+      ${[['Movies', L.movies], ['Shows', L.series], ['Episodes', L.episodes], ['Songs', L.songs], ['Albums', L.albums], ['Books', L.books]].filter(([, v]) => v).map(([k, v]) => `<dt>${k}</dt><dd>${num(v)}</dd>`).join('')}
+      <dt>Profiles</dt><dd>${esc((jf.profiles || []).join(', ') || '–')}</dd><dt>Plays</dt><dd>${num(plays)} ${rangeDays === 1 ? 'today' : `in ${rangeDays} days`}</dd></dl>
+      <h3>Latest watched</h3><div class="bars" id="jfWatched"></div></div>`);
+  }
   $('libBlock').hidden = !libCards.length;
   $('library').innerHTML = libCards.join('');
+  if (jf && $('jfWatched')) $('jfWatched').innerHTML = (jf.watched || []).slice(0, 6).map((w) => `<div class="bar" style="grid-template-columns:1fr auto"><span class="l" title="${esc(w.title)}">${esc(w.title)}</span><span class="v muted">${esc(w.who)} · ${esc(new Date(w.when).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }))}</span></div>`).join('') || '<div class="empty">Nothing yet</div>';
   for (const [k, l] of Object.entries(lib)) {
     const n = l.nerd || {};
     const id = (x) => `lib-${k}-${x}`;

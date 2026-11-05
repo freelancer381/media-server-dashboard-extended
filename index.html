@@ -152,7 +152,7 @@ body.idle, body.idle * { cursor: none !important; }
 </head>
 <body>
 <div id="page">
-  <header><h1>{{TITLE}}</h1><span id="overall"></span><a id="updateLink" class="glass update-link" href="/setup#updates" hidden></a><span class="conn" id="conn" role="status" hidden></span><div id="facts"></div><nav class="links" aria-label="Pages"><a class="glass office-link hide-kiosk" href="/setup" title="Settings">⚙ Settings</a><a class="glass office-link hide-kiosk" href="/logout">Sign out</a><a class="glass office-link" href="/stats" title="Statistics">📊 Stats</a><button class="glass fs-btn" id="fs" type="button" title="Full screen (F)">⛶ Full screen</button><a class="glass office-link" href="/office">Office →</a></nav></header>
+  <header><h1>{{TITLE}}</h1><span id="overall"></span><a id="updateLink" class="glass update-link" href="/setup#updates" hidden></a><span class="conn" id="conn" role="status" hidden></span><div id="facts"></div><nav class="links" aria-label="Pages"><a class="glass office-link hide-kiosk" href="/setup" title="Settings">⚙ Settings</a><a class="glass office-link hide-kiosk" href="/logout">Sign out</a><a class="glass office-link" href="/stats" title="Statistics">📊 Stats</a><button class="glass fs-btn" id="fs" type="button" title="Full screen (F)">⛶ Full screen</button><a class="glass office-link" href="/">← Office</a></nav></header>
   <div id="alerts"></div><div id="hiddenAlerts"></div>
   <div class="row r4">
     <section class="card mini"><div><h2>CPU</h2><div class="hero" id="cpuV">-</div></div><div class="chart" id="cpuC"></div></section>
@@ -162,7 +162,7 @@ body.idle, body.idle * { cursor: none !important; }
   </div>
   <section class="row" id="services" aria-label="Services"></section>
   <div class="row r3" id="middle">
-    <section class="card" id="cinemaCard"><h2>Home Cinema</h2><div id="cinema"></div></section>
+    <section class="card" id="cinemaCard"><h2>Home Cinema <span class="muted small" id="cinemaSrc"></span></h2><div id="cinema"></div></section>
     <section class="card"><h2>Download queue</h2><div id="queue"></div></section>
     <section class="card"><h2>Drives</h2><div id="drives"></div></section>
   </div>
@@ -396,6 +396,7 @@ function render(d) {
 
   // Home Cinema is optional; without it the queue and drives share the row.
   $('cinemaCard').hidden = !cin.enabled;
+  put('cinemaSrc', cin.server ? esc(cin.server) + (cin.ok === false ? ' · not responding' : cin.transcoding ? ` · ${cin.transcoding} transcoding` : '') : '');
   $('middle').className = cin.enabled ? 'row r3' : 'row r2';
   put('cinema', cin.watched ? `<h3>Open right now</h3>${rows(cin.streams, (t) => `<li><span class="t" title="${esc(t.title)}">${esc(t.title)}</span><span class="m">${t.who ? `${who(t.who)}${t.pct}%` : esc(t.service || 'Unknown')}</span></li>`, 'Nothing is playing')}
     <h3>Latest watched</h3>${rows(cin.watched, (w) => `<li><span class="t" title="${esc(w.title)}">${esc(w.title)}</span><span class="m">${who(w.who)}${w.pct}% · ${esc(ago(w.when))}</span></li>`, 'Nothing watched yet')}` : '<div class="empty">Reading…</div>');

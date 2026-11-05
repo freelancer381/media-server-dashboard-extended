@@ -135,6 +135,8 @@ BUILTIN = {
     # rdtclient (Real-Debrid / AllDebrid) speaks qBittorrent's Web API, so one reader covers both.
     "qbittorrent": {"name": "qBittorrent", "kind": "qbittorrent", "api": "", "port": 8080},
     "rdtclient": {"name": "rdtclient", "kind": "qbittorrent", "api": "", "port": 6500},
+    # The media server: who is watching what, the latest watched, the library (fills the Home Cinema card and the office's TV).
+    "jellyfin": {"name": "Jellyfin", "kind": "jellyfin", "api": "", "port": 8096},
 }
 # The download clients. Any number of them may be set up; the download card, graph and the office's parcel
 # pile show them together (state["sab"]), each one's own state is in dl_state.
@@ -152,7 +154,7 @@ def make_app(key, a, base=None):
         "api": a.get("api_version") or base.get("api", "v1"), "url": url, "api_key": a.get("api_key") or "",
         "host": u.hostname, "port": u.port or (443 if u.scheme == "https" else 80), "verify": a.get("verify_tls", True),
         "auth": a.get("auth") or ("query" if base.get("kind") == "sabnzbd" else "header"),
-        "auth_name": a.get("auth_name") or ("X-API-KEY" if base.get("kind") == "bazarr" else "X-Api-Key"),
+        "auth_name": a.get("auth_name") or {"bazarr": "X-API-KEY", "jellyfin": "X-Emby-Token"}.get(base.get("kind"), "X-Api-Key"),
         "health_path": a.get("health_path") or "/",
         "username": a.get("username") or "",  # NZBGet and qBittorrent sign in with user and password
         # Where the app's own web interface opens from the office (the API address unless set separately).
@@ -178,7 +180,7 @@ BY_KIND = {a["key"]: a for a in APPS if a["key"] in BUILTIN}  # the built-in app
 DOWNLOADERS = [BY_KIND[k] for k in DL_KEYS if k in BY_KIND]
 DL_NAMES = {a["name"] for a in DOWNLOADERS}
 
-PAGES = {"/": "index.html", "/office": "office.html", "/stats": "stats.html"}
+PAGES = {"/": "office.html", "/dashboard": "index.html", "/stats": "stats.html"}  # the office is the start; the dashboard on request
 # Served without a sign-in: browsers fetch a web app's manifest and icons without the login cookie.
 STATIC = {"/kiosk.js": ("kiosk.js", "text/javascript; charset=utf-8"), "/icon-180.png": ("icons/icon-180.png", "image/png"),
           "/icon-192.png": ("icons/icon-192.png", "image/png"), "/icon-512.png": ("icons/icon-512.png", "image/png"),
@@ -691,7 +693,9 @@ def open_link(kind, title, year, slug):
 
 
 def media_server():
-    """The Plex or Jellyfin set up as a custom app (the wizard's presets), if any: (kind, app)."""
+    """The Plex or Jellyfin the posters open in: the built-in Jellyfin, or one set up as a custom app: (kind, app)."""
+    if BY_KIND.get("jellyfin"):
+        return "jellyfin", BY_KIND["jellyfin"]
     for a in APPS:
         if a["kind"] != "generic":
             continue
@@ -789,6 +793,94 @@ def read_prowlarr():
         } for i in st if isinstance(i, dict)), key=lambda x: -x["queries"])[:20]
     except FAIL:
         pass
+
+
+# ---------- Jellyfin: sessions, users, what was watched, the library ----------
+jf_slow = {"at": 0.0}
+jf_seen = {}  # session key -> title, for "is watching" lines in the feed
+
+
+def jf_get(a, path, timeout=6):
+    """Jellyfin's API with its key: the old header and the newer Authorization form, so every version understands it."""
+    headers = {"Accept": "application/json", "X-Emby-Token": a["api_key"],
+               "Authorization": f'MediaBrowser Client="Media Server Dashboard", Device="Dashboard", DeviceId="msd", Version="{VERSION}", Token="{a["api_key"]}"'}
+    return http_get(a["url"] + path, headers, timeout=timeout, context=DEFAULT_SSL if a["verify"] else INSECURE_SSL)
+
+
+def jf_title(item):
+    """'Severance S02E05', 'Dune (2021)', 'Daft Punk – Contact'."""
+    kind, name = item.get("Type"), item.get("Name") or ""
+    if kind == "Episode":
+        se = f" S{item.get('ParentIndexNumber') or 0:02d}E{item.get('IndexNumber') or 0:02d}" if item.get("IndexNumber") is not None else ""
+        return f"{item.get('SeriesName') or name}{se}"
+    if kind == "Movie" and item.get("ProductionYear"):
+        return f"{name} ({item['ProductionYear']})"
+    if kind == "Audio" and item.get("Artists"):
+        return f"{item['Artists'][0]} – {name}"
+    return name
+
+
+def jf_when(text):
+    try:
+        return int(datetime.strptime(text[:19], "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc).timestamp() * 1000)
+    except (TypeError, ValueError):
+        return None
+
+
+def read_jellyfin():
+    a = BY_KIND.get("jellyfin")
+    if not a:
+        return
+    try:
+        sessions = jf_get(a, "/Sessions?activeWithinSeconds=960")
+        if time.time() - jf_slow["at"] > 60:  # the slow part once a minute
+            info = jf_get(a, "/System/Info")
+            users = [u for u in jf_get(a, "/Users") if not (u.get("Policy") or {}).get("IsDisabled")]
+            counts = jf_get(a, "/Items/Counts")
+            watched = []
+            for u in users[:12]:
+                q = "&".join(["SortBy=DatePlayed", "SortOrder=Descending", "IncludeItemTypes=Movie,Episode", "Recursive=true", "Limit=5", "Fields=UserData", "Filters=IsPlayed"])
+                try:
+                    items = jf_get(a, f"/Users/{urllib.parse.quote(u['Id'])}/Items?{q}").get("Items") or []
+                except FAIL:
+                    continue
+                for it in items:
+                    ud = it.get("UserData") or {}
+                    when = jf_when(ud.get("LastPlayedDate"))
+                    if when:
+                        watched.append({"who": u.get("Name"), "title": jf_title(it), "pct": round(ud.get("PlayedPercentage") or 100), "when": when})
+            jf_slow.update(at=time.time(), info=info, counts=counts, watched=sorted(watched, key=lambda w: -w["when"])[:8],
+                           profiles=[u.get("Name") for u in users if not (u.get("Policy") or {}).get("IsHidden")][:8] or [u.get("Name") for u in users][:8])
+    except FAIL:
+        state["jellyfin"] = {"ok": False}
+        state["cinema"] = {**state["cinema"], "enabled": True, "ok": False, "streams": []}
+        jf_slow["at"] = 0
+        return
+    streams = []
+    for ses in sessions if isinstance(sessions, list) else []:
+        it = ses.get("NowPlayingItem")
+        if not it:
+            continue
+        ps = ses.get("PlayState") or {}
+        run, pos = it.get("RunTimeTicks") or 0, ps.get("PositionTicks") or 0
+        transcoding = ps.get("PlayMethod") == "Transcode" or bool((ses.get("TranscodingInfo") or {}) and not (ses.get("TranscodingInfo") or {}).get("IsVideoDirect", True))
+        streams.append({"title": jf_title(it), "who": ses.get("UserName") or "", "pct": round(pos / run * 100) if run else 0, "paused": bool(ps.get("IsPaused")),
+                        "transcoding": transcoding, "device": ses.get("DeviceName") or "", "client": ses.get("Client") or "", "service": a["name"],
+                        "key": f"{ses.get('Id')}|{it.get('Id')}"})
+    # The feed: someone starts watching (Jellyfin's webhook plugin says it at once and in full, then this stays quiet).
+    keys = {s["key"]: s for s in streams}
+    if jf_seen.get("_ready") and not LIVE.hooked(a["name"]):
+        for k, st in keys.items():
+            if k not in jf_seen:
+                LIVE.emit(a["name"], "play", f"{st['who'] + ' is watching' if st['who'] else 'now playing:'} {st['title']}" + (" (transcoding)" if st["transcoding"] else ""), "info")
+    jf_seen.clear()
+    jf_seen.update({k: v["title"] for k, v in keys.items()}, _ready=True)
+    info, counts = jf_slow.get("info") or {}, jf_slow.get("counts") or {}
+    state["jellyfin"] = {"ok": True, "version": info.get("Version"), "server": info.get("ServerName"),
+                         "library": {"movies": counts.get("MovieCount", 0), "series": counts.get("SeriesCount", 0), "episodes": counts.get("EpisodeCount", 0),
+                                     "songs": counts.get("SongCount", 0), "albums": counts.get("AlbumCount", 0), "books": counts.get("BookCount", 0)}}
+    state["cinema"] = {"enabled": True, "ok": True, "server": a["name"], "profiles": jf_slow.get("profiles") or [], "streams": [{k: v for k, v in s.items() if k != "key"} for s in streams],
+                       "watched": jf_slow.get("watched") or [], "missing_drives": [], "transcoding": sum(1 for s in streams if s["transcoding"])}
 
 
 def read_bazarr():
@@ -923,6 +1015,14 @@ def tidy(name):
 
 def activity(name):
     """The task an app is busy with, or None when it has nothing to do."""
+    jf = BY_KIND.get("jellyfin")
+    if jf and name == jf["name"]:
+        playing = [s for s in state["cinema"].get("streams", []) if not s.get("paused")]
+        if not playing:
+            return None
+        s = playing[0]
+        more = f" (+{len(playing) - 1} more)" if len(playing) > 1 else ""
+        return f"{'Transcoding' if s.get('transcoding') else 'Streaming'} {s['title']}{' for ' + s['who'] if s.get('who') else ''}{more}"
     if name in DL_NAMES:
         sab = dl_named(name)
         if not sab.get("ok") or sab["paused"] or not (sab["speed"] > 0 or sab["queueTotal"]):
@@ -1421,6 +1521,8 @@ def record_stats():
         if svc.get("ms") is not None:
             v["ms:" + svc["name"]] = svc["ms"]
     v.update(alerts=len(visible_alerts()[0]), viewers=len(LIVE.subscribers))
+    if state.get("jellyfin", {}).get("ok"):
+        v.update(streams=len(state["cinema"].get("streams", [])), transcodes=state["cinema"].get("transcoding", 0))
     STATS.add(v, now)
     STATS.count_events(LIVE.recent(500))
     if now - stats_saved[0] > 300:
@@ -1480,6 +1582,7 @@ def stats_payload(rng):
         "services": state["services"], "downloads": {k: v for k, v in dl_state.items()}, "sab": state["sab"],
         "library": {k: {x: state[k].get(x) for x in ("version", "library", "missing", "nerd")} for k in ("radarr", "sonarr") if state[k].get("ok")},
         "prowlarr": {x: state["prowlarr"].get(x) for x in ("version", "indexers", "stats") if state["prowlarr"].get("ok")},
+        "jellyfin": {**state["jellyfin"], "profiles": state["cinema"].get("profiles", []), "watched": state["cinema"].get("watched", [])} if state.get("jellyfin", {}).get("ok") else None,
         "game": LIVE.summary(), "events_total": STATS.last_event,
         "process": proc,
     }
@@ -1768,7 +1871,7 @@ def public_config():
                  "start": bool(HOME.get("start")), "tiles": HOME.get("tiles") or []},
         # The webhook address is a secret too, but whoever may open the settings needs it to set up the apps.
         "webhook": {"token": WEBHOOK_TOKEN if SETUP_DONE else "", "set": bool(WEBHOOK_TOKEN)},
-        "game": {"enabled": GAME.get("enabled", True)},
+        "game": {"enabled": GAME.get("enabled", True)}, "landing": "dashboard" if c.get("landing") == "dashboard" else "office",
         "updates": update_info() if SETUP_DONE else {"managed": bool(updater_conf()), "version": VERSION},
     }
 
@@ -1832,6 +1935,9 @@ def wizard_test(req):
                 v = app_get(app, "version").get("version")
                 app_get(app, "queue&limit=1")["queue"]  # version works without a key; the queue proves the key
                 return {"ok": True, "version": v}
+            if app["kind"] == "jellyfin":
+                info = jf_get(app, "/System/Info")  # needs the key, unlike /System/Info/Public
+                return {"ok": True, "version": info.get("Version"), "app": info.get("ServerName")}
             if app["kind"] == "bazarr":
                 return {"ok": True, "version": (app_get(app, "system/status").get("data") or {}).get("bazarr_version")}
             if app["kind"] in ("radarr", "sonarr", "prowlarr", "arr"):
@@ -1870,6 +1976,7 @@ def build_config(req):
     c["webhook_token"] = secrets.token_urlsafe(24) if req.get("new_webhook_token") or not old.get("webhook_token") else old["webhook_token"]
     c["game"] = {"enabled": bool((req.get("game") or {}).get("enabled", True))}
     c["title"] = (req.get("title") or "").strip()[:80] or "Media Server Dashboard"
+    c["landing"] = "dashboard" if req.get("landing") == "dashboard" else "office"  # what opens after signing in
 
     user = (req.get("user") or "").strip()
     if not re.fullmatch(r"[A-Za-z0-9._@-]{2,64}", user):
@@ -2221,6 +2328,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.json(200, update_info()) if self.authed() else self.json(401, {"error": "sign-in needed"})
         if DEMO and path.startswith("/demo-poster/"):
             return self.reply(200, demo.poster(path), "image/svg+xml")
+        if path == "/office":  # the old address of the office, from before it became the start page
+            q = urllib.parse.urlparse(self.path).query
+            return self.redirect("/" + ("?" + q if q else ""))
         if path in PAGES:
             return self.page(PAGES[path]) if self.authed() else self.redirect("/login")
         if path == "/poster":
@@ -2420,7 +2530,7 @@ class Handler(BaseHTTPRequestHandler):
             failures.pop(ip, None)
             secure = "; Secure" if self.https() else ""
             sid = session_new(ip, self.headers.get("User-Agent", ""))
-            return self.redirect("/office" if HOME.get("enabled") and HOME.get("start") else "/", f"dash_auth={sid}; Path=/; Max-Age={SESSION_IDLE}; HttpOnly; SameSite=Strict{secure}")
+            return self.redirect("/dashboard" if CONFIG.get("landing") == "dashboard" else "/", f"dash_auth={sid}; Path=/; Max-Age={SESSION_IDLE}; HttpOnly; SameSite=Strict{secure}")
         attempts = 1 if fail[1] else fail[0] + 1  # a finished lockout starts counting again
         failures[ip] = [attempts, time.time() + LOCKOUT if attempts >= MAX_ATTEMPTS else 0, time.time()]
         if len(failures) > 5000:  # forget old entries instead of growing with every address that ever failed
@@ -2481,6 +2591,7 @@ if __name__ == "__main__":
             looped(5, read_sonarr)
             looped(60, read_prowlarr)
             looped(30, read_bazarr)
+            looped(5, read_jellyfin)
             looped(15, read_custom)
             looped(5, read_activity)
     signal.signal(signal.SIGTERM, on_sigterm)

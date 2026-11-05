@@ -92,7 +92,7 @@ def payload(title, version="demo", boot=""):
                    "speed_limit": 100, "cpu": {"user": cpu[-1] * 0.7, "system": cpu[-1] * 0.3, "idle": 100 - cpu[-1]}, "load": [2.1, 1.8, 1.6],
                    "memory": {"total": 64 * GB, "used": int(mem[-1] / 100 * 64 * GB), "free_level": 40, "swap_total": 0, "swap_used": 0}},
         "services": services,
-        "cinema": {"enabled": True, "ok": True, "converting": 0, "profiles": PEOPLE, "streams": streams, "watched": watched, "missing_drives": []},
+        "cinema": {"enabled": True, "ok": True, "server": "Jellyfin", "transcoding": 1 if streams else 0, "converting": 0, "profiles": PEOPLE, "streams": streams, "watched": watched, "missing_drives": []},
         "sab": {"ok": True, "client": "SABnzbd + qBittorrent", "version": None, "paused": False, "speed": sab[-1] + qb_speed, "left": 27 * GB, "eta": "0:41:10",
                 "queueTotal": 15, "queue": [q for pair in zip(queue, torrents + [None] * len(queue)) for q in pair if q], "failed": 0,
                 "totals": {"day": 45 * GB, "week": 251 * GB, "month": 990 * GB, "total": 11900 * GB}},
@@ -187,6 +187,8 @@ def stats(rng, ranges):
         "queue": [pt(max(0.0, wave(x, 7000, -4, 14, 6)), max(0.0, wave(x, 7000, -2, 18, 7))) for x in t],
         "alerts": [pt(1, 1) if (x // 3600) % 37 == 0 else pt(0, 0) for x in t],
         "viewers": [pt(max(0.0, 1 + daily(x)), 2 + max(0.0, daily(x)) * 2) for x in t],
+        "streams": [pt(max(0.0, 1.2 * daily(x) + 0.6), max(0, round(2.5 * daily(x) + 1.5))) for x in t],
+        "transcodes": [pt(max(0.0, 0.5 * daily(x)), max(0, round(daily(x) + 0.3))) for x in t],
     }
     for name, seed, hi in (("SABnzbd", 1, 9), ("qBittorrent", 2, 4)):
         s["dl:" + name] = [pt(max(0.0, wave(x, 3000 + seed * 900, -2, hi, seed) + 2 * daily(x)) * 1048576, wave(x, 2500, hi, hi * 2.2, seed) * 1048576) for x in t]
@@ -255,4 +257,7 @@ def stats(rng, ranges):
             [("NZBgeek", 4120, 611, 12, 340), ("DrunkenSlug", 3890, 402, 31, 520), ("1337x", 2210, 140, 88, 910), ("TorrentLeech", 1980, 233, 9, 280),
              ("Nyaa", 760, 51, 4, 410), ("Milkie", 540, 22, 1, 300)]]},
         "events_total": sum(sum(d["kinds"].values()) for d in days),
+        "jellyfin": {"ok": True, "version": "10.10.3", "server": "media", "profiles": PEOPLE,
+                     "library": {"movies": 412, "series": 64, "episodes": 2210, "songs": 5120, "albums": 410, "books": 0},
+                     "watched": [{"who": PEOPLE[i % 3], "title": f"{SHOWS[i % 4][0]} {SHOWS[i % 4][1]}", "pct": 100, "when": int((now - (i + 1) * 3600) * 1000)} for i in range(6)]},
     }

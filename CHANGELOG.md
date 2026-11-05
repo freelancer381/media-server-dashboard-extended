@@ -5,6 +5,12 @@ becomes its GitHub release text, so write it for the people who run the dashboar
 
 ## Unreleased
 
+Added:
+- Jellyfin as a built-in app (Settings → Apps, with an API key from Jellyfin's Dashboard → API Keys): who is watching what, with progress, device and transcoding; the latest watched per profile; the library's numbers; "is watching" lines in the live feed (instantly with Jellyfin's webhook plugin). It fills the dashboard's Home Cinema card and the TV above the office couch, the office has a Jellyfin worker, posters open in it, and the statistics show streams and transcodes over time. A Jellyfin added as a custom app before keeps working; switch on the built-in one and remove the custom entry to get all of this.
+
+Changed:
+- The office is the start page now (`/`), with Settings, Sign out, Stats, Full screen and "Dashboard →" in its top right. The dashboard moved to `/dashboard`; old links to `/office` still work. Settings → Account → "After signing in, show" picks the office or the dashboard. It replaces "Open the office with the start page after signing in".
+
 Changed:
 - Hiding a problem banner (×) now asks for how long: 1 hour, 1 day, 1 week or for good. It stays hidden for that time even when the problem goes away and comes back in between (such as "Memory is running low"), in every browser, and it no longer posts its chat lines in the office meanwhile. "N hidden problems" under the banners lists them with "Show again". A changing number doesn't count as a new problem ("3 failed downloads" stays hidden at 4).
 

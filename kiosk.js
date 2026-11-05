@@ -18,7 +18,7 @@
   // Started from the home screen: go on to the page used last.
   if (params.has('app')) {
     const last = store.get('kioskPage');
-    if (last && last !== location.pathname && /^\/(office|stats)?$/.test(last)) { location.replace(last + '?kiosk'); return; }
+    if (last && last !== location.pathname && /^\/(dashboard|stats)?$/.test(last)) { location.replace(last + '?kiosk'); return; }
   }
   if (params.has('kiosk')) store.set('kiosk', params.get('kiosk') === '0' ? null : '1');
 

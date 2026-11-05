@@ -556,3 +556,88 @@ class QBittorrent(unittest.TestCase):
             server.build_config(wizard(apps={"qbittorrent": {"enabled": True, "url": self.qb.url}},
                                        custom_apps=[{"name": "qBittorrent", "url": "http://10.0.0.5:8080", "kind": "generic", "auth": "none"}]))
         self.assertEqual(server.configured_apps({"apps": {"rdtclient": {"url": "http://10.0.0.6:6500"}}})[0]["kind"], "qbittorrent")
+
+
+class Jellyfin(unittest.TestCase):
+    """read_jellyfin against a fake Jellyfin API."""
+
+    def setUp(self):
+        import threading
+        import urllib.parse
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        self.sessions = [{"Id": "s1", "UserName": "Alex", "DeviceName": "Living room TV", "Client": "Jellyfin Android TV",
+                          "NowPlayingItem": {"Id": "i1", "Type": "Episode", "Name": "Hello, Ms. Cobel", "SeriesName": "Severance", "ParentIndexNumber": 2, "IndexNumber": 1, "RunTimeTicks": 1000},
+                          "PlayState": {"PositionTicks": 250, "IsPaused": False, "PlayMethod": "DirectPlay"}},
+                         {"Id": "s2", "UserName": "Sam", "NowPlayingItem": None}]  # signed in, watching nothing
+        self.tokens = []
+        outer = self
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                outer.tokens.append(self.headers.get("X-Emby-Token"))
+                if self.headers.get("X-Emby-Token") != "key":
+                    self.send_response(401); self.end_headers(); return
+                u = urllib.parse.urlparse(self.path)
+                body = {"/System/Info": {"Version": "10.10.3", "ServerName": "media", "Id": "abc"},
+                        "/Sessions": outer.sessions,
+                        "/Users": [{"Id": "u1", "Name": "Alex", "Policy": {}}, {"Id": "u2", "Name": "Sam", "Policy": {}},
+                                   {"Id": "u3", "Name": "Old", "Policy": {"IsDisabled": True}}],
+                        "/Items/Counts": {"MovieCount": 412, "SeriesCount": 64, "EpisodeCount": 2210},
+                        "/Users/u1/Items": {"Items": [{"Type": "Movie", "Name": "Dune", "ProductionYear": 2021, "UserData": {"LastPlayedDate": "2026-11-04T20:15:00.0000000Z", "Played": True}}]},
+                        "/Users/u2/Items": {"Items": [{"Type": "Episode", "Name": "x", "SeriesName": "Andor", "ParentIndexNumber": 1, "IndexNumber": 3,
+                                                       "UserData": {"LastPlayedDate": "2026-11-05T09:00:00Z", "PlayedPercentage": 64}}]}}.get(u.path)
+                data = json.dumps(body).encode()
+                self.send_response(200 if body is not None else 404)
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+        self.srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+        self.app = server.make_app("jellyfin", {"url": f"http://127.0.0.1:{self.srv.server_port}", "api_key": "key"}, server.BUILTIN["jellyfin"])
+        self.saved = (dict(server.BY_KIND), dict(server.state["cinema"]), dict(server.state.get("jellyfin", {})))
+        server.BY_KIND["jellyfin"] = self.app
+        server.jf_slow.clear(); server.jf_slow["at"] = 0
+        server.jf_seen.clear()
+
+    def tearDown(self):
+        self.srv.shutdown()
+        server.BY_KIND.clear(); server.BY_KIND.update(self.saved[0])
+        server.state["cinema"], server.state["jellyfin"] = self.saved[1], self.saved[2]
+
+    def test_streams_profiles_watched_library(self):
+        server.read_jellyfin()
+        cin, jf = server.state["cinema"], server.state["jellyfin"]
+        self.assertTrue(cin["enabled"] and cin["ok"] and jf["ok"])
+        self.assertEqual(cin["profiles"], ["Alex", "Sam"])  # the disabled user is left out
+        self.assertEqual(cin["streams"], [{"title": "Severance S02E01", "who": "Alex", "pct": 25, "paused": False, "transcoding": False,
+                                           "device": "Living room TV", "client": "Jellyfin Android TV", "service": "Jellyfin"}])
+        self.assertEqual([(w["who"], w["title"], w["pct"]) for w in cin["watched"]], [("Sam", "Andor S01E03", 64), ("Alex", "Dune (2021)", 100)])  # newest first
+        self.assertEqual((jf["version"], jf["library"]["movies"], jf["library"]["episodes"]), ("10.10.3", 412, 2210))
+        self.assertEqual(server.activity("Jellyfin"), "Streaming Severance S02E01 for Alex")
+        self.assertEqual(server.media_server()[0], "jellyfin")  # posters open in it
+        self.assertEqual(set(self.tokens), {"key"})
+
+    def test_new_stream_reaches_the_feed_and_transcoding_shows(self):
+        server.read_jellyfin()
+        self.sessions.append({"Id": "s3", "UserName": "Sam", "NowPlayingItem": {"Id": "i9", "Type": "Movie", "Name": "Arrival", "ProductionYear": 2016, "RunTimeTicks": 100},
+                              "PlayState": {"PositionTicks": 0, "PlayMethod": "Transcode"}, "TranscodingInfo": {"IsVideoDirect": False}})
+        server.read_jellyfin()
+        last = server.LIVE.recent(3)
+        self.assertTrue(any(e["source"] == "Jellyfin" and e["kind"] == "play" and e["text"] == "Sam is watching Arrival (2016) (transcoding)" for e in last), last)
+        self.assertEqual(server.state["cinema"]["transcoding"], 1)
+        self.sessions[0]["PlayState"]["IsPaused"] = True
+        server.read_jellyfin()
+        self.assertTrue(server.activity("Jellyfin").startswith("Transcoding Arrival (2016) for Sam"))  # the paused one doesn't count
+
+    def test_wrong_key_and_connection_test(self):
+        self.assertEqual(server.wizard_test({"what": "app", "app": {"key": "jellyfin", "url": self.app["url"], "api_key": "key"}}),
+                         {"ok": True, "version": "10.10.3", "app": "media"})
+        self.app["api_key"] = "nope"
+        server.read_jellyfin()
+        self.assertFalse(server.state["jellyfin"]["ok"])
+        self.assertFalse(server.state["cinema"]["ok"])
+        self.assertFalse(server.wizard_test({"what": "app", "app": {"key": "jellyfin", "url": self.app["url"], "api_key": "nope"}})["ok"])

@@ -1,6 +1,6 @@
 # Media Server Dashboard · Extended
 
-A dashboard for a homelab media stack (Radarr, Sonarr, Prowlarr, Bazarr, SABnzbd, NZBGet, qBittorrent, rdtclient and more) plus a 3D
+A dashboard for a homelab media stack (Radarr, Sonarr, Prowlarr, Bazarr, SABnzbd, NZBGet, qBittorrent, rdtclient, Jellyfin and more) plus a 3D
 office where your apps are the employees. This edition runs on **Proxmox (LXC)**, in **Docker** and on
 a **Synology**, and watches everything over the network.
 
@@ -27,8 +27,8 @@ All of them with the made-up data of `python3 server.py --demo`.
 
 ## Features
 
-- **Dashboard** (`/`): live graphs for CPU, memory, network and downloads, which services are up (hover one to see what's wrong), the SABnzbd queue, storage, recently added movies and shows, and what's coming up in the next 14 days.
-- **Office** (`/office`): the apps sit at their desks while they're working and wander off to the break room when they're idle. Custom apps join as extra staff.
+- **Dashboard** (`/dashboard`, top right in the office): live graphs for CPU, memory, network and downloads, which services are up (hover one to see what's wrong), the SABnzbd queue, storage, recently added movies and shows, and what's coming up in the next 14 days.
+- **Office** (`/`, the start page; Settings → Account can open the dashboard after signing in instead): the apps sit at their desks while they're working and wander off to the break room when they're idle. Custom apps join as extra staff.
 - **Live feed** in the office: what the apps do shows up as a chat and as a speech bubble above the worker ("Radarr: imported Dune (2021) in Bluray-2160p"). It comes from the apps' webhooks and from what the dashboard notices itself, pushed live over Server-Sent Events.
 - **Panic:** if the Proxmox host can't be reached, the server in the office catches fire and the staff run around shouting until it answers again.
 - **Posters** open the title in Plex or Jellyfin (or Radarr/Sonarr); workers open their app.
@@ -37,6 +37,7 @@ All of them with the made-up data of `python3 server.py --demo`.
 - **Proxmox:** host stats, storages and the state of containers and VMs through the Proxmox API, with a read-only token. Without Proxmox (Docker, Synology) the dashboard shows the machine it runs on instead: CPU, memory, load, disk I/O and the mounted drives, from `/proc`.
 - **Statistics** (`/stats`, 📊 Stats): everything the dashboard sees, kept for up to two years (a point per minute for a day, per hour for 90 days, per day after that) and shown as graphs with average and peak: CPU, memory, load, network, disk I/O, download speed per client, gigabytes per day, queue length, every app's response time (median, p95, peak), indexer queries and grab rates, the feed per day, a weekday × hour heatmap, and the library taken apart: qualities, resolutions, codecs, HDR, audio, genres, decades, studios, the biggest titles and what was added per month. Plus the dashboard's own process for the curious.
 - **Full screen and wall tablets:** "⛶ Full screen" (or F) on the dashboard, the office and the statistics. In kiosk mode (full screen, `?kiosk` in the address, or added to the home screen as an app) the screen stays on, the pointer hides, settings and sign-out disappear and the page refreshes itself once a night. Added to the home screen it opens full screen on the page last used.
+- **Jellyfin:** who is watching what (with progress, device and whether it transcodes), the latest watched per profile, the library's numbers and "is watching" lines in the live feed. It fills the Home Cinema card and the TV above the office couch, and posters open their title in Jellyfin.
 - **Download clients:** SABnzbd (API key), NZBGet, qBittorrent and rdtclient (Real-Debrid / AllDebrid, through its qBittorrent-compatible API; user and password): speed, queue, totals and finished or failed downloads in the feed. Several can run side by side; the download card shows them together, each worker its own queue.
 - **Setup wizard** (`/setup`, later ⚙ Settings as tabs with a save bar): user, address (IP or a domain with HTTPS), Proxmox, apps with connection tests, custom apps with presets (Lidarr, Readarr, Whisparr, Jellyseerr, Jellyfin, Plex, Tautulli), start page, live feed and updates.
 - **One-click updates** (LXC): only releases signed by this repository's release workflow are installed, with a backup, a health check and an automatic rollback. Docker and Synology update through the signed image.

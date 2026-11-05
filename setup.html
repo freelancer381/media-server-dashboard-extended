@@ -93,7 +93,7 @@ nav button.dirty::after { content: ' •'; color: #9cc4ff; }
 </head>
 <body>
 <main>
-  <header><h1 id="heading">Setup</h1><a id="back" href="/" hidden>← Back to the dashboard</a></header>
+  <header><h1 id="heading">Setup</h1><a id="back" href="/" hidden>← Back to the office</a></header>
   <nav id="steps" aria-label="Steps"></nav>
 
   <section class="glass" data-step="Start" id="s-token">
@@ -115,6 +115,9 @@ nav button.dirty::after { content: ' •'; color: #9cc4ff; }
     </div>
     <label id="curPwBox" hidden>Current password <span class="hint">(needed to set a new one)</span><input id="curPw" type="password" autocomplete="current-password"></label>
     <div class="hint">At least 10 characters. A new password signs out every browser.</div>
+    <div class="radio"><b class="hint">After signing in, show</b>
+      <label class="check"><input type="radio" name="landing" value="office"> The office</label>
+      <label class="check"><input type="radio" name="landing" value="dashboard"> The dashboard</label></div>
     <div class="row" id="sessionsRow" hidden><button class="ghost" id="endAll">Sign out everywhere</button><span class="status" id="endAllStatus"></span></div>
   </section>
 
@@ -173,7 +176,7 @@ nav button.dirty::after { content: ' •'; color: #9cc4ff; }
     <div class="row">
       <select id="preset" aria-label="Preset">
         <option value="lidarr">Lidarr</option><option value="readarr">Readarr</option><option value="whisparr">Whisparr</option>
-        <option value="seerr">Jellyseerr / Overseerr</option><option value="jellyfin">Jellyfin</option><option value="plex">Plex</option>
+        <option value="seerr">Jellyseerr / Overseerr</option><option value="plex">Plex</option>
         <option value="tautulli">Tautulli</option><option value="arr">Other *arr app</option><option value="generic">Other tool</option>
       </select>
       <button class="ghost" id="addCustom">+ Add</button>
@@ -193,7 +196,6 @@ nav button.dirty::after { content: ' •'; color: #9cc4ff; }
           <label class="check"><input type="radio" name="layout" value="grid"> Tiles</label>
           <label class="check"><input type="radio" name="layout" value="table"> Table</label></div>
       </div>
-      <label class="check"><input id="homeStart" type="checkbox"> Open the office with the start page after signing in</label>
       <div class="row"><h3 style="flex:1">Tiles</h3><button class="ghost mini" id="tilesFromApps">Add the apps set up above</button><button class="ghost mini" id="addTile">+ Tile</button></div>
       <div id="tiles" class="body"></div>
     </div>
@@ -260,7 +262,6 @@ const PRESETS = {
   readarr: { name: 'Readarr', kind: 'arr', api_version: 'v1', port: 8787 },
   whisparr: { name: 'Whisparr', kind: 'arr', api_version: 'v3', port: 6969 },
   seerr: { name: 'Jellyseerr', kind: 'generic', auth: 'header', auth_name: 'X-Api-Key', health_path: '/api/v1/status', port: 5055 },
-  jellyfin: { name: 'Jellyfin', kind: 'generic', auth: 'header', auth_name: 'X-Emby-Token', health_path: '/System/Info', port: 8096 },
   plex: { name: 'Plex', kind: 'generic', auth: 'query', auth_name: 'X-Plex-Token', health_path: '/identity', port: 32400 },
   tautulli: { name: 'Tautulli', kind: 'generic', auth: 'query', auth_name: 'apikey', health_path: '/api/v2?cmd=status', port: 8181 },
   arr: { name: '', kind: 'arr', api_version: 'v1' },
@@ -397,7 +398,7 @@ function builtinCard(key, b, a) {
       <div class="grid2">
         <label>URL<input type="url" class="url" value="${esc(a.url)}" placeholder="http://192.168.1.x:${b.port}"></label>
         ${nzb ? `<label>Username <span class="hint">(${nzb[0]})</span><input type="text" class="user" value="${esc(a.username || '')}" autocomplete="off" spellcheck="false"></label>` : ''}
-        <label>${nzb ? `Password <span class="hint">(${nzb[1]})</span>` : 'API key'} ${a.has_key ? '<span class="hint">(saved – leave empty to keep it for this address)</span>' : ''}<input type="password" class="key" autocomplete="off"></label>
+        <label>${nzb ? `Password <span class="hint">(${nzb[1]})</span>` : key === 'jellyfin' ? 'API key <span class="hint">(Dashboard → API Keys → +)</span>' : 'API key'} ${a.has_key ? '<span class="hint">(saved – leave empty to keep it for this address)</span>' : ''}<input type="password" class="key" autocomplete="off"></label>
       </div>
       <label>Open in the browser at <span class="hint">(optional, if not the URL above; clicking the worker in the office opens it)</span><input type="url" class="web" value="${esc(a.web_url || '')}" placeholder="https://radarr.home.lan"></label>
       <div class="row"><label class="check"><input type="checkbox" class="verify" ${a.verify_tls !== false ? 'checked' : ''}> Check the certificate (https)</label>
@@ -650,6 +651,7 @@ function load(c) {
   $('s-token').dataset.skip = '1';
   if (!c.setup_done) $('s-token').removeAttribute('data-skip');
   $('title').value = c.title;
+  document.querySelector(`input[name=landing][value=${c.landing === 'dashboard' ? 'dashboard' : 'office'}]`).checked = true;
   $('user').value = c.user;
   $('sessionsRow').hidden = !c.setup_done;
   $('pwHint').innerHTML = c.setup_done ? '<span class="hint">(leave empty to keep it)</span>' : '';
@@ -677,7 +679,6 @@ function load(c) {
   $('homeOn').checked = h.enabled;
   document.querySelector(`input[name=side][value=${h.side === 'left' ? 'left' : 'right'}]`).checked = true;
   document.querySelector(`input[name=layout][value=${h.layout === 'table' ? 'table' : 'grid'}]`).checked = true;
-  $('homeStart').checked = h.start;
   $('tiles').innerHTML = '';
   for (const t of h.tiles) $('tiles').append(tileCard(t));
   syncHome();
@@ -709,7 +710,7 @@ function collect() {
   });
   const pveOn = $('pveOn').checked;
   return {
-    title: $('title').value.trim(), user: $('user').value.trim(), password: $('pw').value, current_password: $('curPw').value,
+    title: $('title').value.trim(), landing: (document.querySelector('input[name=landing]:checked') || {}).value || 'office', user: $('user').value.trim(), password: $('pw').value, current_password: $('curPw').value,
     domain: addrMode() === 'ip' ? '' : $('domain').value.trim(), behind_proxy: addrMode() === 'proxy', tls: document.querySelector('input[name=tls]:checked').value, ip_access: $('ipAccess').checked,
     proxmox: pveOn ? pveInput() : {},
     // Without a successful connection test the lists aren't shown; keep what was saved instead of clearing it.
@@ -718,7 +719,7 @@ function collect() {
     apps, custom_apps: [...document.querySelectorAll('#customApps .app')].map((el) => el.read()),
     game: { enabled: $('gameOn').checked }, new_webhook_token: $('newHook').checked,
     home: { enabled: $('homeOn').checked, side: document.querySelector('input[name=side]:checked').value, layout: document.querySelector('input[name=layout]:checked').value,
-      start: $('homeStart').checked, tiles: [...document.querySelectorAll('#tiles .tile')].map((el) => el.read()) },
+      tiles: [...document.querySelectorAll('#tiles .tile')].map((el) => el.read()) },
   };
 }
 
@@ -732,14 +733,15 @@ function renderSummary() {
     ['Storages', d.proxmox.url ? (d.storages.join(', ') || 'all') : '–'], ['Watched guests', d.watch_guests.join(', ') || '–'],
     ['Apps', on.join(', ') || 'none'],
     ['Live feed', `gamification ${d.game.enabled ? 'on' : 'off'}${d.new_webhook_token ? ' · new webhook address' : ''}`],
-    ['Start page', d.home.enabled ? `${d.home.side === 'left' ? 'left' : 'right'} of the office · ${d.home.layout === 'table' ? 'table' : 'tiles'} · ${d.home.tiles.length} tile(s)${d.home.start ? ' · after sign-in' : ''}` : 'off'],
+    ['After signing in', d.landing === 'dashboard' ? 'the dashboard' : 'the office'],
+    ['Start page', d.home.enabled ? `${d.home.side === 'left' ? 'left' : 'right'} of the office · ${d.home.layout === 'table' ? 'table' : 'tiles'} · ${d.home.tiles.length} tile(s)` : 'off'],
   ];
   $('summary').innerHTML = rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
 }
 
 // ---------- changes and saving ----------
 // Which tab each saved field belongs to, so the tabs can show where something changed.
-const FIELD_TABS = { title: 's-user', user: 's-user', password: 's-user', domain: 's-address', behind_proxy: 's-address', tls: 's-address', ip_access: 's-address',
+const FIELD_TABS = { title: 's-user', landing: 's-user', user: 's-user', password: 's-user', domain: 's-address', behind_proxy: 's-address', tls: 's-address', ip_access: 's-address',
   proxmox: 's-pve', storages: 's-pve', watch_guests: 's-pve', apps: 's-apps', custom_apps: 's-apps', home: 's-home', game: 's-live', new_webhook_token: 's-live' };
 let saved = null;
 function snapshot() { const d = collect(); delete d.current_password; return Object.fromEntries(Object.entries(d).map(([k, v]) => [k, JSON.stringify(v)])); }
