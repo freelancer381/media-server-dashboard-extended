@@ -592,7 +592,9 @@ function renderUpdates(u) {
     return;
   }
   $('updRepo').textContent = u.repo;
-  $('updAuto').checked = u.auto; $('updHour').value = String(u.hour);
+  // Refreshed every few seconds: never overwrite what someone is changing right now.
+  if (document.activeElement !== $('updAuto')) $('updAuto').checked = u.auto;
+  if (document.activeElement !== $('updHour')) $('updHour').value = String(u.hour);
   const st = u.status || {}, last = st.last || {};
   const running = st.state === 'running';
   $('updRun').hidden = !running;
@@ -610,7 +612,11 @@ function renderUpdates(u) {
   }
   const a = st.available;
   $('updAvail').hidden = running || !a;
-  if (a && !running) {
+  // Only drawn again when the release itself changes: redrawing it on every refresh replaced the password
+  // field while someone was typing in it (the focus and what was typed were gone).
+  const availKey = a && !running ? JSON.stringify([a.version, a.name, a.notes, a.published, a.url]) : '';
+  if (availKey && $('updAvail').dataset.key !== availKey) {
+    $('updAvail').dataset.key = availKey;
     $('updAvail').innerHTML = `<b>${esc(a.name || 'Version ' + a.version)}</b><span class="hint">signature checked ✓${a.published ? ' · ' + new Date(a.published).toLocaleDateString('en-GB') : ''} · <a href="${esc(a.url)}" target="_blank" rel="noopener" style="color:var(--s1)">on GitHub</a></span>
       <div class="notes">${esc(a.notes || 'No notes.')}</div>
       <div class="row"><input type="password" id="updPw" placeholder="Your password to confirm" autocomplete="current-password" style="flex:1;min-width:180px"><button id="updInstall">Install version ${esc(a.version)}</button></div><span class="status" id="updInstallStatus"></span>`;
@@ -618,9 +624,10 @@ function renderUpdates(u) {
       setStatus($('updInstallStatus'), 'busy', 'Starting …');
       const r = await api('/api/update/install', { version: a.version, password: $('updPw').value });
       setStatus($('updInstallStatus'), r.ok ? 'ok' : 'err', r.ok ? '✓ The update starts in a moment.' : '✕ ' + r.error);
-      if (r.ok) pollUpdates(true);
+      if (r.ok) { $('updPw').value = ''; pollUpdates(true); }
     };
-  }
+    $('updPw').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('updInstall').click(); });
+  } else if (!availKey) delete $('updAvail').dataset.key;
   const ref = st.refused || [];
   $('updRefused').hidden = !ref.length;
   $('updRefused').innerHTML = ref.map((x) => `Can't be installed: ${esc(x.version)} – ${esc(x.reason)}`).join('<br>');

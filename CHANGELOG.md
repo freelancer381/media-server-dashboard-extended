@@ -5,6 +5,9 @@ becomes its GitHub release text, so write it for the people who run the dashboar
 
 ## Unreleased
 
+Fixed:
+- Settings → Updates: typing the password to install an update could suddenly stop going into the field, and what was typed was gone. The page redrew the release card, password field included, every time it refreshed the update status (every few seconds). It now redraws it only when the release changes. Enter in the password field installs, and the automatic-update choice no longer jumps back while being changed.
+
 ## 0.5.3 - 2026-11-05
 
 Added:
