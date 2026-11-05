@@ -5,6 +5,8 @@ becomes its GitHub release text, so write it for the people who run the dashboar
 
 ## Unreleased
 
+## 0.5.3 - 2026-11-05
+
 Added:
 - **Unraid template** (`unraid/media-server-dashboard.xml`, see [docs/unraid.md](docs/unraid.md)): one command adds it, then Docker → Add Container. App data in `/mnt/user/appdata`, the array's free space through a read-only `/mnt/user` mapping, the Unraid server's name and numbers on the dashboard.
 - The container image takes `PUID` and `PGID` (default 1000:1000): it hands `/data` to them on start and then runs without root. A data folder that root created, as on a fresh NAS share, no longer needs a `chown` by hand. With `user:` in Compose (as on a Synology) nothing changes.
