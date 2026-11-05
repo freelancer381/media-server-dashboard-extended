@@ -66,10 +66,22 @@ jobs:
         run: |
           set -euo pipefail
           docker build --build-arg VERSION="$(cat VERSION)" -t msd:ci .
-          mkdir -p data && sudo chown 1000:1000 data
+          sudo mkdir -p data  # owned by root, as a fresh folder on a NAS often is: the entrypoint hands it over
           docker run -d --name msd -p 8900:8900 -v "$PWD/data:/data" msd:ci
           for _ in $(seq 1 30); do curl -fsS http://127.0.0.1:8900/healthz && ok=1 && break; sleep 1; done
           docker logs msd
           [ "${ok:-}" = 1 ]
           test "$(curl -s -o /dev/null -w '%{redirect_url}' http://127.0.0.1:8900/)" = "http://127.0.0.1:8900/setup"
           sudo test -f data/setup-token.txt
+          test "$(sudo stat -c %u:%g data/setup-token.txt)" = "1000:1000"
+          test "$(docker exec msd cat /proc/1/status | awk '/^Uid:/ {print $2}')" = "1000"  # the dashboard (PID 1 after the entrypoint) isn't root
+
+      - name: Unraid's user and group (PUID/PGID)
+        run: |
+          set -euo pipefail
+          sudo mkdir -p unraid-data
+          docker run -d --name msd-unraid -p 8901:8900 -e PUID=99 -e PGID=100 -v "$PWD/unraid-data:/data" msd:ci
+          for _ in $(seq 1 30); do curl -fsS http://127.0.0.1:8901/healthz && ok=1 && break; sleep 1; done
+          docker logs msd-unraid
+          [ "${ok:-}" = 1 ]
+          test "$(sudo stat -c %u:%g unraid-data/setup-token.txt)" = "99:100"

@@ -409,7 +409,9 @@ def read_local(proc="/proc"):
     total_mem = mem.get("MemTotal") or 1
     used = total_mem - mem.get("MemAvailable", mem.get("MemFree", 0))
     state["system"].update(
-        source="local", host=os.environ.get("MSD_HOST_NAME") or socket.gethostname(), cpu_name=local_cpu["model"], cores=os.cpu_count() or 1,
+        # HOST_HOSTNAME: Unraid passes its server name to every container
+        source="local", host=os.environ.get("MSD_HOST_NAME") or os.environ.get("HOST_HOSTNAME") or socket.gethostname(),
+        cpu_name=local_cpu["model"], cores=os.cpu_count() or 1,
         pve="", kernel=os.uname().release, booted=int((now - up) * 1000), speed_limit=100,
         cpu={"user": round(use - io, 1), "system": round(io, 1), "idle": round(100 - use, 1)}, load=load,
         memory={"total": total_mem, "used": used, "free_level": round(mem.get("MemAvailable", 0) / total_mem * 100),
@@ -432,6 +434,8 @@ def read_local_disks(proc="/proc"):
     disks, seen = [], set()
     with open(f"{proc}/mounts", encoding="utf-8", errors="replace") as f:
         mounts = [l.split()[:3] for l in f if len(l.split()) >= 3]
+    # A share mounted at /mnt/... (Unraid's /mnt/user) names the drive better than /data on the same one.
+    mounts.sort(key=lambda m: not m[1].startswith("/mnt/"))
     for dev, path, fs in mounts:
         path = path.replace("\\040", " ")
         if fs not in LOCAL_FS or path.startswith(("/etc/", "/proc", "/sys", "/dev")) or os.path.isfile(path):

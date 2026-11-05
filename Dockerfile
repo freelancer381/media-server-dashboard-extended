@@ -24,13 +24,16 @@ COPY vendor ./vendor
 COPY kiosk.js ./
 COPY icons ./icons
 # Settings, password hash, API keys and the game live in /data: mount a volume or a folder there.
+# The entrypoint gives /data to PUID:PGID (default 1000:1000; Unraid: 99:100) and drops root before the
+# dashboard starts. With `user:` set (Compose, Synology) it runs as that user and changes nothing.
 RUN useradd --uid 1000 --user-group --home-dir /data --no-create-home msd \
     && mkdir -p /data && chown msd:msd /data
-USER msd
+ENV PUID=1000 PGID=1000
 VOLUME /data
 EXPOSE 8900
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD ["python3", "-c", "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/healthz' % os.environ.get('MSD_PORT', '8900'), timeout=4)"]
 
+ENTRYPOINT ["python3", "/app/docker-entrypoint.py"]
 CMD ["python3", "/app/server.py"]

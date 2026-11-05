@@ -45,6 +45,7 @@ docker run -d --name media-server-dashboard --restart unless-stopped \
 | Variable | Default | Meaning |
 |---|---|---|
 | `MSD_PORT` | `8900` | port inside the container |
+| `PUID` / `PGID` | `1000` / `1000` | the user and group the dashboard runs as; the container hands `/data` to them on start (Unraid: `99` / `100`). With `user:` set instead, it runs as that user and changes nothing |
 | `MSD_TRUSTED_PROXIES` | empty | comma-separated addresses or ranges of your reverse proxy, as the container sees them (`172.18.0.1`, `172.16.0.0/12`) |
 | `MSD_HOST_NAME` | the container's name | the name shown for this machine when there is no Proxmox host |
 | `MSD_UPDATE_REPO` | `freelancer381/media-server-dashboard-extended` | where to look for new releases (a notice only) |

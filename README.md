@@ -1,8 +1,8 @@
 # Media Server Dashboard · Extended
 
 A dashboard for a homelab media stack (Radarr, Sonarr, Prowlarr, Bazarr, SABnzbd, NZBGet, qBittorrent, rdtclient, Jellyfin and more) plus a 3D
-office where your apps are the employees. This edition runs on **Proxmox (LXC)**, in **Docker** and on
-a **Synology**, and watches everything over the network.
+office where your apps are the employees. This edition runs on **Proxmox (LXC)**, in **Docker**, on
+**Unraid** and on a **Synology**, and watches everything over the network.
 
 > **Credits:** This project is based on
 > [Media Server Dashboard](https://github.com/Essq1337/media-server-dashboard) by
@@ -50,6 +50,7 @@ Python standard library only, no build step, no accounts, no analytics.
 |---|---|---|
 | **Proxmox VE** (own LXC, recommended) | [docs/proxmox.md](docs/proxmox.md): one script on the host, pick storage and resources from menus | Settings → Updates (one click, signed) |
 | **Docker / Docker Compose** | [docs/docker.md](docs/docker.md) | `docker compose pull && docker compose up -d` |
+| **Unraid** (Docker template) | [docs/unraid.md](docs/unraid.md): one command, then Add Container | Docker tab → apply update |
 | **Synology** (Container Manager) | [docs/synology.md](docs/synology.md) | rebuild the project or update the image |
 
 Then open `http://<address>/setup`, enter the **setup token** (the installer prints it; with Docker it is
@@ -60,7 +61,7 @@ in the log) and go through the wizard.
 | Install | Forward to | More |
 |---|---|---|
 | Proxmox LXC | `http://<container IP>:80` (Caddy; the dashboard itself only listens on 127.0.0.1:8900) | choose "Behind my own reverse proxy" in the wizard, [docs/proxmox.md](docs/proxmox.md#behind-nginx-proxy-manager-or-another-proxy) |
-| Docker / Synology | `http://<Docker host>:8900` (the published port), or `http://media-server-dashboard:8900` on a shared Docker network | set `MSD_TRUSTED_PROXIES`, [docs/docker.md](docs/docker.md#behind-a-reverse-proxy-https) |
+| Docker / Unraid / Synology | `http://<Docker host>:8900` (the published port), or `http://media-server-dashboard:8900` on a shared Docker network | set `MSD_TRUSTED_PROXIES`, [docs/docker.md](docs/docker.md#behind-a-reverse-proxy-https) |
 
 To just try it with made-up data:
 

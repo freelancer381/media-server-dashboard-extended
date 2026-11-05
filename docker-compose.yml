@@ -26,5 +26,6 @@ services:
       # Behind a reverse proxy (Synology, Nginx Proxy Manager, Traefik, Caddy): the proxy's address as the
       # container sees it, so logins are locked per real visitor and cookies are marked secure.
       # MSD_TRUSTED_PROXIES: "172.17.0.1"
-    # The folder above must be writable for uid 1000 (Synology: see docs/synology.md), or set your own:
+    # The container hands the folder above to uid:gid 1000:1000 on start; for others set PUID/PGID
+    # (environment, e.g. PUID: "1026"), or run it as a fixed user that can already write there:
     # user: "1026:100"

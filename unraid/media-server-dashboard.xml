@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>media-server-dashboard</Name>
+  <Repository>ghcr.io/freelancer381/media-server-dashboard-extended:latest</Repository>
+  <Registry>https://github.com/freelancer381/media-server-dashboard-extended/pkgs/container/media-server-dashboard-extended</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/freelancer381/media-server-dashboard-extended/issues</Support>
+  <Project>https://github.com/freelancer381/media-server-dashboard-extended</Project>
+  <Overview>A dashboard for a homelab media stack plus a 3D office where your apps are the staff. Radarr, Sonarr, Prowlarr, Bazarr, SABnzbd, NZBGet, qBittorrent, rdtclient and Jellyfin; a live feed from their webhooks with a team board, long-term statistics, a start page with your own links, and a full screen mode for wall tablets. Without a Proxmox host it shows the Unraid server itself: CPU, memory, load, disk activity and the free space of the mounted shares.[br][br]After the first start, open the WebUI and enter the setup token from the container's log (Docker tab → the container's icon → Logs).</Overview>
+  <Category>Tools: MediaServer:Other Status:Stable</Category>
+  <WebUI>http://[IP]:[PORT:8900]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/freelancer381/media-server-dashboard-extended/main/unraid/media-server-dashboard.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/freelancer381/media-server-dashboard-extended/main/icons/icon-512.png</Icon>
+  <ExtraParams>--stop-timeout 10</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <Requires/>
+  <Config Name="WebUI port" Target="8900" Default="8900" Mode="tcp" Description="The dashboard's port. Change the left (host) side if 8900 is taken on your server." Type="Port" Display="always" Required="true" Mask="false">8900</Config>
+  <Config Name="App data" Target="/data" Default="/mnt/user/appdata/media-server-dashboard" Mode="rw" Description="Settings, password hash, API keys, the live feed, the team board and the statistics." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/media-server-dashboard</Config>
+  <Config Name="Shares (free space)" Target="/mnt/user" Default="/mnt/user" Mode="ro" Description="Optional, read-only: the dashboard shows how full the array is. Remove it if you don't want that." Type="Path" Display="advanced" Required="false" Mask="false">/mnt/user</Config>
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User the dashboard runs as; 99 is Unraid's nobody, the owner of appdata." Type="Variable" Display="advanced" Required="true" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group the dashboard runs as; 100 is Unraid's users." Type="Variable" Display="advanced" Required="true" Mask="false">100</Config>
+  <Config Name="Trusted proxies" Target="MSD_TRUSTED_PROXIES" Default="" Mode="" Description="Only behind a reverse proxy (Nginx Proxy Manager, SWAG, Traefik): its address or range as the container sees it, e.g. 172.16.0.0/12. Then the login lockout sees the real visitor and the cookie is marked secure." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Host name" Target="MSD_HOST_NAME" Default="" Mode="" Description="Optional: the name shown for this server. Empty: the Unraid server's name." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+</Container>
