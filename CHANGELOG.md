@@ -5,6 +5,8 @@ becomes its GitHub release text, so write it for the people who run the dashboar
 
 ## Unreleased
 
+## 0.5.2 - 2026-11-05
+
 Added:
 - Jellyfin as a built-in app (Settings → Apps, with an API key from Jellyfin's Dashboard → API Keys): who is watching what, with progress, device and transcoding; the latest watched per profile; the library's numbers; "is watching" lines in the live feed (instantly with Jellyfin's webhook plugin). It fills the dashboard's Home Cinema card and the TV above the office couch, the office has a Jellyfin worker, posters open in it, and the statistics show streams and transcodes over time. A Jellyfin added as a custom app before keeps working; switch on the built-in one and remove the custom entry to get all of this.
 
