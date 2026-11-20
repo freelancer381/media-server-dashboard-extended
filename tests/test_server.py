@@ -641,3 +641,115 @@ class Jellyfin(unittest.TestCase):
         self.assertFalse(server.state["jellyfin"]["ok"])
         self.assertFalse(server.state["cinema"]["ok"])
         self.assertFalse(server.wizard_test({"what": "app", "app": {"key": "jellyfin", "url": self.app["url"], "api_key": "nope"}})["ok"])
+
+
+class Plex(unittest.TestCase):
+    """read_plex against a fake Plex API (the shapes of Plex Media Server's JSON answers)."""
+
+    def setUp(self):
+        import re
+        import threading
+        import urllib.parse
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        self.sessions = [{"type": "episode", "title": "Hello, Ms. Cobel", "grandparentTitle": "Severance", "parentIndex": 2, "index": 1,
+                          "ratingKey": "101", "duration": 1000, "viewOffset": 250,
+                          "User": {"id": "1", "title": "Alex"}, "Player": {"title": "Living room TV", "product": "Plex for Android (TV)", "state": "playing"},
+                          "Session": {"id": "s1"}}]
+        self.tokens, self.paths = [], []
+        outer = self
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_GET(self):
+                outer.tokens.append(self.headers.get("X-Plex-Token"))
+                u = urllib.parse.urlparse(self.path)
+                outer.paths.append(self.path)
+                if self.headers.get("X-Plex-Token") != "tok":
+                    self.send_response(401); self.end_headers(); return
+                q = urllib.parse.parse_qs(u.query)
+                counts = {("1", "1"): 412, ("2", "2"): 64, ("2", "4"): 2210}
+                body = {"/": {"friendlyName": "media", "version": "1.41.2.9200", "machineIdentifier": "abc"},
+                        "/status/sessions": {"size": len(outer.sessions), "Metadata": outer.sessions},
+                        "/accounts": {"Account": [{"id": 0, "name": ""}, {"id": 1, "name": "Alex"}, {"id": 2, "name": "Sam"}]},
+                        "/status/sessions/history/all": {"Metadata": [
+                            {"type": "episode", "title": "x", "grandparentTitle": "Andor", "parentIndex": 1, "index": 3, "viewedAt": 1762333200, "accountID": 2},
+                            {"type": "movie", "title": "Dune", "year": 2021, "viewedAt": 1762287300, "accountID": 1},
+                            {"type": "movie", "title": "Dune", "year": 2021, "viewedAt": 1762200000, "accountID": 1},  # watched twice: shown once
+                            {"type": "track", "title": "Contact", "viewedAt": 1762280000, "accountID": 1}]},  # music isn't "watched"
+                        "/library/sections": {"Directory": [{"key": "1", "type": "movie"}, {"key": "2", "type": "show"}]}}.get(u.path)
+                m = re.fullmatch(r"/library/sections/(\d+)/all", u.path)
+                if m:
+                    body = {"size": 0, "totalSize": counts.get((m[1], q.get("type", [""])[0]), 0)}
+                data = json.dumps({"MediaContainer": body}).encode()
+                self.send_response(200 if body is not None else 404)
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+        self.srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+        self.app = server.make_app("plex", {"url": f"http://127.0.0.1:{self.srv.server_port}", "api_key": "tok"}, server.BUILTIN["plex"])
+        self.saved = (dict(server.BY_KIND), dict(server.state["cinema"]), dict(server.state.get("plex", {})), dict(server.now_playing))
+        server.BY_KIND.pop("jellyfin", None)
+        server.BY_KIND["plex"] = self.app
+        server.px_slow.clear(); server.px_slow["at"] = 0
+        server.px_seen.clear()
+
+    def tearDown(self):
+        self.srv.shutdown()
+        server.BY_KIND.clear(); server.BY_KIND.update(self.saved[0])
+        server.state["cinema"], server.state["plex"] = self.saved[1], self.saved[2]
+        server.now_playing.clear(); server.now_playing.update(self.saved[3])
+
+    def test_streams_profiles_watched_library(self):
+        server.read_plex()
+        cin, px = server.state["cinema"], server.state["plex"]
+        self.assertTrue(cin["enabled"] and cin["ok"] and px["ok"])
+        self.assertEqual(cin["server"], "Plex")
+        self.assertEqual(cin["profiles"], ["Alex", "Sam"])  # Plex's system account (id 0) is left out
+        self.assertEqual(cin["streams"], [{"title": "Severance S02E01", "who": "Alex", "pct": 25, "paused": False, "transcoding": False,
+                                           "device": "Living room TV", "client": "Plex for Android (TV)", "service": "Plex"}])
+        self.assertEqual([(w["who"], w["title"], w["pct"]) for w in cin["watched"]], [("Sam", "Andor S01E03", 100), ("Alex", "Dune (2021)", 100)])
+        self.assertEqual((px["app"], px["server"], px["version"]), ("Plex", "media", "1.41.2.9200"))
+        self.assertEqual((px["library"]["movies"], px["library"]["series"], px["library"]["episodes"]), (412, 64, 2210))
+        self.assertEqual(server.activity("Plex"), "Streaming Severance S02E01 for Alex")
+        self.assertEqual(server.media_server()[0], "plex")  # posters open in it
+        self.assertEqual(server.media_state()["app"], "Plex")  # the statistics show it
+        self.assertEqual(set(self.tokens), {"tok"})
+
+    def test_new_stream_reaches_the_feed_and_transcoding_shows(self):
+        server.read_plex()
+        self.sessions.append({"type": "movie", "title": "Arrival", "year": 2016, "ratingKey": "9", "duration": 100, "viewOffset": 0,
+                              "User": {"title": "Sam"}, "Player": {"title": "iPad", "product": "Plex for iOS", "state": "playing"},
+                              "Session": {"id": "s3"}, "TranscodeSession": {"videoDecision": "transcode", "audioDecision": "copy"}})
+        server.read_plex()
+        last = server.LIVE.recent(3)
+        self.assertTrue(any(e["source"] == "Plex" and e["kind"] == "play" and e["text"] == "Sam is watching Arrival (2016) (transcoding)" for e in last), last)
+        self.assertEqual(server.state["cinema"]["transcoding"], 1)
+        self.sessions[0]["Player"]["state"] = "paused"
+        server.read_plex()
+        self.assertTrue(server.activity("Plex").startswith("Transcoding Arrival (2016) for Sam"))  # the paused one doesn't count
+
+    def test_direct_stream_is_not_transcoding(self):
+        self.assertFalse(server.px_transcoding({"TranscodeSession": {"videoDecision": "copy", "audioDecision": "copy"}}))
+        self.assertTrue(server.px_transcoding({"TranscodeSession": {"videoDecision": "copy", "audioDecision": "transcode"}}))
+        self.assertFalse(server.px_transcoding({}))
+
+    def test_jellyfin_fills_the_card_but_plex_keeps_its_task(self):
+        server.BY_KIND["jellyfin"] = server.make_app("jellyfin", {"url": "http://127.0.0.1:1", "api_key": "k"}, server.BUILTIN["jellyfin"])
+        server.state["cinema"] = {"enabled": True, "ok": True, "server": "Jellyfin", "streams": []}
+        server.read_plex()
+        self.assertEqual(server.state["cinema"]["server"], "Jellyfin")  # untouched
+        self.assertEqual(server.activity("Plex"), "Streaming Severance S02E01 for Alex")
+
+    def test_wrong_token_and_connection_test(self):
+        self.assertEqual(server.wizard_test({"what": "app", "app": {"key": "plex", "url": self.app["url"], "api_key": "tok"}}),
+                         {"ok": True, "version": "1.41.2.9200", "app": "media"})
+        self.app["api_key"] = "nope"
+        server.read_plex()
+        self.assertFalse(server.state["plex"]["ok"])
+        self.assertFalse(server.state["cinema"]["ok"])
+        self.assertIsNone(server.activity("Plex"))
+        self.assertFalse(server.wizard_test({"what": "app", "app": {"key": "plex", "url": self.app["url"], "api_key": "nope"}})["ok"])

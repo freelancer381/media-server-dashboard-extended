@@ -135,9 +135,12 @@ BUILTIN = {
     # rdtclient (Real-Debrid / AllDebrid) speaks qBittorrent's Web API, so one reader covers both.
     "qbittorrent": {"name": "qBittorrent", "kind": "qbittorrent", "api": "", "port": 8080},
     "rdtclient": {"name": "rdtclient", "kind": "qbittorrent", "api": "", "port": 6500},
-    # The media server: who is watching what, the latest watched, the library (fills the Home Cinema card and the office's TV).
+    # The media servers: who is watching what, the latest watched, the library (fill the Home Cinema card and the office's TV).
+    # With both set up, Jellyfin fills the card; each one's worker still shows what it is streaming.
     "jellyfin": {"name": "Jellyfin", "kind": "jellyfin", "api": "", "port": 8096},
+    "plex": {"name": "Plex", "kind": "plex", "api": "", "port": 32400},
 }
+MEDIA_KEYS = ("jellyfin", "plex")  # in the order they fill the Home Cinema card
 # The download clients. Any number of them may be set up; the download card, graph and the office's parcel
 # pile show them together (state["sab"]), each one's own state is in dl_state.
 DL_KEYS = ("sabnzbd", "nzbget", "qbittorrent", "rdtclient")
@@ -154,7 +157,7 @@ def make_app(key, a, base=None):
         "api": a.get("api_version") or base.get("api", "v1"), "url": url, "api_key": a.get("api_key") or "",
         "host": u.hostname, "port": u.port or (443 if u.scheme == "https" else 80), "verify": a.get("verify_tls", True),
         "auth": a.get("auth") or ("query" if base.get("kind") == "sabnzbd" else "header"),
-        "auth_name": a.get("auth_name") or {"bazarr": "X-API-KEY", "jellyfin": "X-Emby-Token"}.get(base.get("kind"), "X-Api-Key"),
+        "auth_name": a.get("auth_name") or {"bazarr": "X-API-KEY", "jellyfin": "X-Emby-Token", "plex": "X-Plex-Token"}.get(base.get("kind"), "X-Api-Key"),
         "health_path": a.get("health_path") or "/",
         "username": a.get("username") or "",  # NZBGet and qBittorrent sign in with user and password
         # Where the app's own web interface opens from the office (the API address unless set separately).
@@ -202,6 +205,7 @@ KEEP = 150          # samples kept: 5 minutes
 history = {k: deque(maxlen=KEEP) for k in ("t", "cpu", "mem", "rx", "tx", "disk", "sab")}
 state = {"system": {}, "services": [], "cinema": {"enabled": False, "profiles": [], "streams": [], "watched": [], "missing_drives": []},
          "sab": {"ok": False}, "radarr": {"ok": False}, "sonarr": {"ok": False}, "prowlarr": {"ok": False}, "bazarr": {"ok": False},
+         "jellyfin": {"ok": None}, "plex": {"ok": None},  # not asked yet (the alert check runs before the first read)
          "custom": {}, "activity": {}, "network": {}, "disks": [], "proxmox": {"ok": None, "guests": []}}
 for _k in BUILTIN:  # apps that aren't set up say so, instead of looking broken
     if _k not in BY_KIND and _k not in DL_KEYS:
@@ -697,9 +701,10 @@ def open_link(kind, title, year, slug):
 
 
 def media_server():
-    """The Plex or Jellyfin the posters open in: the built-in Jellyfin, or one set up as a custom app: (kind, app)."""
-    if BY_KIND.get("jellyfin"):
-        return "jellyfin", BY_KIND["jellyfin"]
+    """The Plex or Jellyfin the posters open in: a built-in one (Jellyfin first), or one set up as a custom app: (kind, app)."""
+    for k in MEDIA_KEYS:
+        if BY_KIND.get(k):
+            return k, BY_KIND[k]
     for a in APPS:
         if a["kind"] != "generic":
             continue
@@ -856,10 +861,8 @@ def read_jellyfin():
             jf_slow.update(at=time.time(), info=info, counts=counts, watched=sorted(watched, key=lambda w: -w["when"])[:8],
                            profiles=[u.get("Name") for u in users if not (u.get("Policy") or {}).get("IsHidden")][:8] or [u.get("Name") for u in users][:8])
     except FAIL:
-        state["jellyfin"] = {"ok": False}
-        state["cinema"] = {**state["cinema"], "enabled": True, "ok": False, "streams": []}
         jf_slow["at"] = 0
-        return
+        return media_down(a, "jellyfin")
     streams = []
     for ses in sessions if isinstance(sessions, list) else []:
         it = ses.get("NowPlayingItem")
@@ -871,20 +874,134 @@ def read_jellyfin():
         streams.append({"title": jf_title(it), "who": ses.get("UserName") or "", "pct": round(pos / run * 100) if run else 0, "paused": bool(ps.get("IsPaused")),
                         "transcoding": transcoding, "device": ses.get("DeviceName") or "", "client": ses.get("Client") or "", "service": a["name"],
                         "key": f"{ses.get('Id')}|{it.get('Id')}"})
-    # The feed: someone starts watching (Jellyfin's webhook plugin says it at once and in full, then this stays quiet).
-    keys = {s["key"]: s for s in streams}
-    if jf_seen.get("_ready") and not LIVE.hooked(a["name"]):
-        for k, st in keys.items():
-            if k not in jf_seen:
-                LIVE.emit(a["name"], "play", f"{st['who'] + ' is watching' if st['who'] else 'now playing:'} {st['title']}" + (" (transcoding)" if st["transcoding"] else ""), "info")
-    jf_seen.clear()
-    jf_seen.update({k: v["title"] for k, v in keys.items()}, _ready=True)
     info, counts = jf_slow.get("info") or {}, jf_slow.get("counts") or {}
-    state["jellyfin"] = {"ok": True, "version": info.get("Version"), "server": info.get("ServerName"),
-                         "library": {"movies": counts.get("MovieCount", 0), "series": counts.get("SeriesCount", 0), "episodes": counts.get("EpisodeCount", 0),
-                                     "songs": counts.get("SongCount", 0), "albums": counts.get("AlbumCount", 0), "books": counts.get("BookCount", 0)}}
-    state["cinema"] = {"enabled": True, "ok": True, "server": a["name"], "profiles": jf_slow.get("profiles") or [], "streams": [{k: v for k, v in s.items() if k != "key"} for s in streams],
-                       "watched": jf_slow.get("watched") or [], "missing_drives": [], "transcoding": sum(1 for s in streams if s["transcoding"])}
+    media_up(a, "jellyfin", jf_seen, streams, profiles=jf_slow.get("profiles") or [], watched=jf_slow.get("watched") or [],
+             info={"version": info.get("Version"), "server": info.get("ServerName"),
+                   "library": {"movies": counts.get("MovieCount", 0), "series": counts.get("SeriesCount", 0), "episodes": counts.get("EpisodeCount", 0),
+                               "songs": counts.get("SongCount", 0), "albums": counts.get("AlbumCount", 0), "books": counts.get("BookCount", 0)}})
+
+
+# ---------- what the media servers share: the feed, the Home Cinema card, each worker's task ----------
+now_playing = {}  # media server name -> its streams, for its worker's task (also when the other server fills the card)
+
+
+def cinema_key():
+    """The media server that fills the Home Cinema card: the first one set up."""
+    return next((k for k in MEDIA_KEYS if k in BY_KIND), None)
+
+
+def media_state():
+    """The state of the media server that fills the card, for the statistics: {ok, app, version, server, library} or None."""
+    k = cinema_key()
+    return state.get(k) if k and state.get(k, {}).get("ok") else None
+
+
+def media_down(a, key):
+    state[key] = {"ok": False, "app": a["name"]}
+    now_playing[a["name"]] = []
+    if cinema_key() == key:
+        state["cinema"] = {**state["cinema"], "enabled": True, "ok": False, "server": a["name"], "streams": []}
+
+
+def media_up(a, key, seen, streams, profiles, watched, info):
+    """One media server's new state. `streams` carry a "key" (session|item) so a new one is noticed for the feed."""
+    # The feed: someone starts watching (a webhook says it at once and in full, then this stays quiet).
+    keys = {s["key"]: s for s in streams}
+    if seen.get("_ready") and not LIVE.hooked(a["name"]):
+        for k, st in keys.items():
+            if k not in seen:
+                LIVE.emit(a["name"], "play", f"{st['who'] + ' is watching' if st['who'] else 'now playing:'} {st['title']}" + (" (transcoding)" if st["transcoding"] else ""), "info")
+    seen.clear()
+    seen.update({k: v["title"] for k, v in keys.items()}, _ready=True)
+    streams = [{k: v for k, v in s.items() if k != "key"} for s in streams]
+    now_playing[a["name"]] = streams
+    state[key] = {"ok": True, "app": a["name"], **info}
+    if cinema_key() == key:
+        state["cinema"] = {"enabled": True, "ok": True, "server": a["name"], "profiles": profiles, "streams": streams,
+                           "watched": watched, "missing_drives": [], "transcoding": sum(1 for s in streams if s["transcoding"])}
+
+
+# ---------- Plex: sessions, accounts, what was watched, the library ----------
+px_slow = {"at": 0.0}
+px_seen = {}  # session key -> title, for "is watching" lines in the feed
+# Plex's library types: what /library/sections/<id>/all?type=N counts for each kind of section.
+PX_COUNTS = {"movie": [(1, "movies")], "show": [(2, "series"), (4, "episodes")], "artist": [(9, "albums"), (10, "songs")]}
+
+
+def px_get(a, path, timeout=6):
+    """Plex's API as JSON, with its token (X-Plex-Token) and the client headers Plex likes to see."""
+    headers = {"Accept": "application/json", "X-Plex-Token": a["api_key"], "X-Plex-Product": "Media Server Dashboard",
+               "X-Plex-Version": VERSION, "X-Plex-Client-Identifier": "media-server-dashboard"}
+    return http_get(a["url"] + path, headers, timeout=timeout, context=DEFAULT_SSL if a["verify"] else INSECURE_SSL).get("MediaContainer") or {}
+
+
+def px_title(m):
+    """'Severance S02E05', 'Dune (2021)', 'Daft Punk – Contact'."""
+    kind, name = m.get("type"), m.get("title") or ""
+    if kind == "episode":
+        se = f" S{m.get('parentIndex') or 0:02d}E{m.get('index') or 0:02d}" if m.get("index") is not None else ""
+        return f"{m.get('grandparentTitle') or name}{se}"
+    if kind == "movie" and m.get("year"):
+        return f"{name} ({m['year']})"
+    if kind == "track" and (m.get("grandparentTitle") or m.get("originalTitle")):
+        return f"{m.get('originalTitle') or m['grandparentTitle']} – {name}"
+    return name
+
+
+def px_transcoding(m):
+    """Plex says "transcode" for what it converts and "copy" for what it only repackages (direct stream)."""
+    ts = m.get("TranscodeSession")
+    if not ts:
+        return False
+    decisions = {ts.get("videoDecision"), ts.get("audioDecision")} - {None}
+    return "transcode" in decisions if decisions else True
+
+
+def px_library(a):
+    lib = {"movies": 0, "series": 0, "episodes": 0, "songs": 0, "albums": 0, "books": 0}
+    for sec in px_get(a, "/library/sections").get("Directory") or []:
+        for t, field in PX_COUNTS.get(sec.get("type"), []):
+            try:
+                found = px_get(a, f"/library/sections/{urllib.parse.quote(str(sec.get('key')))}/all?type={t}&X-Plex-Container-Start=0&X-Plex-Container-Size=0")
+            except FAIL:
+                continue
+            lib[field] += int(found.get("totalSize", found.get("size", 0)) or 0)
+    return lib
+
+
+def read_plex():
+    a = BY_KIND.get("plex")
+    if not a:
+        return
+    try:
+        sessions = px_get(a, "/status/sessions").get("Metadata") or []
+        if time.time() - px_slow["at"] > 60:  # the slow part once a minute
+            root = px_get(a, "/")
+            accounts = [u for u in px_get(a, "/accounts").get("Account") or [] if u.get("name") and int(u.get("id") or 0) > 0]
+            names = {int(u["id"]): u["name"] for u in accounts}
+            watched = []
+            hist = px_get(a, "/status/sessions/history/all?sort=viewedAt:desc&X-Plex-Container-Start=0&X-Plex-Container-Size=40").get("Metadata") or []
+            for h in hist:
+                if h.get("type") not in ("movie", "episode") or not h.get("viewedAt"):
+                    continue
+                item = {"who": names.get(int(h.get("accountID") or 0), ""), "title": px_title(h), "pct": 100, "when": int(h["viewedAt"]) * 1000}
+                if not any(w["who"] == item["who"] and w["title"] == item["title"] for w in watched):  # a rewatch counts once
+                    watched.append(item)
+            px_slow.update(at=time.time(), root=root, library=px_library(a), watched=watched[:8], profiles=[u["name"] for u in accounts][:8])
+    except FAIL:
+        px_slow["at"] = 0
+        return media_down(a, "plex")
+    streams = []
+    for m in sessions:
+        user, player = m.get("User") or {}, m.get("Player") or {}
+        run, pos = int(m.get("duration") or 0), int(m.get("viewOffset") or 0)
+        streams.append({"title": px_title(m), "who": user.get("title") or "", "pct": round(pos / run * 100) if run else 0,
+                        "paused": player.get("state") == "paused", "transcoding": px_transcoding(m),
+                        "device": player.get("title") or "", "client": player.get("product") or "", "service": a["name"],
+                        "key": f"{(m.get('Session') or {}).get('id') or m.get('sessionKey')}|{m.get('ratingKey')}"})
+    root = px_slow.get("root") or {}
+    media_up(a, "plex", px_seen, streams, profiles=px_slow.get("profiles") or [], watched=px_slow.get("watched") or [],
+             info={"version": root.get("version"), "server": root.get("friendlyName"), "library": px_slow.get("library") or {}})
 
 
 def read_bazarr():
@@ -1019,9 +1136,8 @@ def tidy(name):
 
 def activity(name):
     """The task an app is busy with, or None when it has nothing to do."""
-    jf = BY_KIND.get("jellyfin")
-    if jf and name == jf["name"]:
-        playing = [s for s in state["cinema"].get("streams", []) if not s.get("paused")]
+    if any(BY_KIND.get(k, {}).get("name") == name for k in MEDIA_KEYS):
+        playing = [s for s in now_playing.get(name, []) if not s.get("paused")]
         if not playing:
             return None
         s = playing[0]
@@ -1525,7 +1641,7 @@ def record_stats():
         if svc.get("ms") is not None:
             v["ms:" + svc["name"]] = svc["ms"]
     v.update(alerts=len(visible_alerts()[0]), viewers=len(LIVE.subscribers))
-    if state.get("jellyfin", {}).get("ok"):
+    if media_state():
         v.update(streams=len(state["cinema"].get("streams", [])), transcodes=state["cinema"].get("transcoding", 0))
     STATS.add(v, now)
     STATS.count_events(LIVE.recent(500))
@@ -1586,7 +1702,8 @@ def stats_payload(rng):
         "services": state["services"], "downloads": {k: v for k, v in dl_state.items()}, "sab": state["sab"],
         "library": {k: {x: state[k].get(x) for x in ("version", "library", "missing", "nerd")} for k in ("radarr", "sonarr") if state[k].get("ok")},
         "prowlarr": {x: state["prowlarr"].get(x) for x in ("version", "indexers", "stats") if state["prowlarr"].get("ok")},
-        "jellyfin": {**state["jellyfin"], "profiles": state["cinema"].get("profiles", []), "watched": state["cinema"].get("watched", [])} if state.get("jellyfin", {}).get("ok") else None,
+        # "jellyfin" is the media server that fills the Home Cinema card, Plex too (its name is in "app").
+        "jellyfin": {**media_state(), "profiles": state["cinema"].get("profiles", []), "watched": state["cinema"].get("watched", [])} if media_state() else None,
         "game": LIVE.summary(), "events_total": STATS.last_event,
         "process": proc,
     }
@@ -1939,6 +2056,9 @@ def wizard_test(req):
                 v = app_get(app, "version").get("version")
                 app_get(app, "queue&limit=1")["queue"]  # version works without a key; the queue proves the key
                 return {"ok": True, "version": v}
+            if app["kind"] == "plex":
+                root = px_get(app, "/")  # needs the token, unlike /identity
+                return {"ok": True, "version": root.get("version"), "app": root.get("friendlyName")}
             if app["kind"] == "jellyfin":
                 info = jf_get(app, "/System/Info")  # needs the key, unlike /System/Info/Public
                 return {"ok": True, "version": info.get("Version"), "app": info.get("ServerName")}
@@ -2596,6 +2716,7 @@ if __name__ == "__main__":
             looped(60, read_prowlarr)
             looped(30, read_bazarr)
             looped(5, read_jellyfin)
+            looped(5, read_plex)
             looped(15, read_custom)
             looped(5, read_activity)
     signal.signal(signal.SIGTERM, on_sigterm)

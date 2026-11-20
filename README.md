@@ -1,6 +1,6 @@
 # Media Server Dashboard · Extended
 
-A dashboard for a homelab media stack (Radarr, Sonarr, Prowlarr, Bazarr, SABnzbd, NZBGet, qBittorrent, rdtclient, Jellyfin and more) plus a 3D
+A dashboard for a homelab media stack (Radarr, Sonarr, Prowlarr, Bazarr, SABnzbd, NZBGet, qBittorrent, rdtclient, Jellyfin, Plex and more) plus a 3D
 office where your apps are the employees. This edition runs on **Proxmox (LXC)**, in **Docker**, on
 **Unraid** and on a **Synology**, and watches everything over the network.
 
@@ -38,6 +38,7 @@ All of them with the made-up data of `python3 server.py --demo`.
 - **Statistics** (`/stats`, 📊 Stats): everything the dashboard sees, kept for up to two years (a point per minute for a day, per hour for 90 days, per day after that) and shown as graphs with average and peak: CPU, memory, load, network, disk I/O, download speed per client, gigabytes per day, queue length, every app's response time (median, p95, peak), indexer queries and grab rates, the feed per day, a weekday × hour heatmap, and the library taken apart: qualities, resolutions, codecs, HDR, audio, genres, decades, studios, the biggest titles and what was added per month. Plus the dashboard's own process for the curious.
 - **Full screen and wall tablets:** "⛶ Full screen" (or F) on the dashboard, the office and the statistics. In kiosk mode (full screen, `?kiosk` in the address, or added to the home screen as an app) the screen stays on, the pointer hides, settings and sign-out disappear and the page refreshes itself once a night. Added to the home screen it opens full screen on the page last used.
 - **Jellyfin:** who is watching what (with progress, device and whether it transcodes), the latest watched per profile, the library's numbers and "is watching" lines in the live feed. It fills the Home Cinema card and the TV above the office couch, and posters open their title in Jellyfin.
+- **Plex:** the same as Jellyfin, with a token (`X-Plex-Token`) instead of an API key: who is watching what, the latest watched, the library's numbers, a Plex worker in the office and "is watching" lines in the live feed (by polling). With both set up, Jellyfin fills the Home Cinema card and each worker still shows what it's streaming.
 - **Download clients:** SABnzbd (API key), NZBGet, qBittorrent and rdtclient (Real-Debrid / AllDebrid, through its qBittorrent-compatible API; user and password): speed, queue, totals and finished or failed downloads in the feed. Several can run side by side; the download card shows them together, each worker its own queue.
 - **Setup wizard** (`/setup`, later ⚙ Settings as tabs with a save bar): user, address (IP or a domain with HTTPS), Proxmox, apps with connection tests, custom apps with presets (Lidarr, Readarr, Whisparr, Jellyseerr, Jellyfin, Plex, Tautulli), start page, live feed and updates.
 - **One-click updates** (LXC): only releases signed by this repository's release workflow are installed, with a backup, a health check and an automatic rollback. Docker and Synology update through the signed image.
@@ -82,6 +83,7 @@ addresses, with instructions per app, are under **Settings → Live feed**, read
 - **qBittorrent, rdtclient:** nothing to set up, finished and failed torrents are noticed by polling
 - **NZBGet:** the extension in [`extras/nzbget/DashboardNotify`](extras/nzbget/DashboardNotify) (copy it into NZBGet's scripts folder, paste the URL as its WebhookUrl)
 - **Jellyfin:** Webhook plugin, generic destination (template in the settings)
+- **Plex:** nothing to set up, new streams are noticed by polling
 - **Your own scripts:** `curl -X POST …/hook/<token>/Backup -H 'Content-Type: application/json' -d '{"text": "Backup done"}'`
 
 ## Updates and releases
