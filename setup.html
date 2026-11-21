@@ -176,7 +176,7 @@ nav button.dirty::after { content: ' •'; color: #9cc4ff; }
     <div class="row">
       <select id="preset" aria-label="Preset">
         <option value="lidarr">Lidarr</option><option value="readarr">Readarr</option><option value="whisparr">Whisparr</option>
-        <option value="seerr">Jellyseerr / Overseerr</option><option value="plex">Plex</option>
+        <option value="seerr">Jellyseerr / Overseerr</option>
         <option value="tautulli">Tautulli</option><option value="arr">Other *arr app</option><option value="generic">Other tool</option>
       </select>
       <button class="ghost" id="addCustom">+ Add</button>
@@ -262,7 +262,6 @@ const PRESETS = {
   readarr: { name: 'Readarr', kind: 'arr', api_version: 'v1', port: 8787 },
   whisparr: { name: 'Whisparr', kind: 'arr', api_version: 'v3', port: 6969 },
   seerr: { name: 'Jellyseerr', kind: 'generic', auth: 'header', auth_name: 'X-Api-Key', health_path: '/api/v1/status', port: 5055 },
-  plex: { name: 'Plex', kind: 'generic', auth: 'query', auth_name: 'X-Plex-Token', health_path: '/identity', port: 32400 },
   tautulli: { name: 'Tautulli', kind: 'generic', auth: 'query', auth_name: 'apikey', health_path: '/api/v2?cmd=status', port: 8181 },
   arr: { name: '', kind: 'arr', api_version: 'v1' },
   generic: { name: '', kind: 'generic', auth: 'header', auth_name: 'X-Api-Key', health_path: '/' },
@@ -398,7 +397,7 @@ function builtinCard(key, b, a) {
       <div class="grid2">
         <label>URL<input type="url" class="url" value="${esc(a.url)}" placeholder="http://192.168.1.x:${b.port}"></label>
         ${nzb ? `<label>Username <span class="hint">(${nzb[0]})</span><input type="text" class="user" value="${esc(a.username || '')}" autocomplete="off" spellcheck="false"></label>` : ''}
-        <label>${nzb ? `Password <span class="hint">(${nzb[1]})</span>` : key === 'jellyfin' ? 'API key <span class="hint">(Dashboard → API Keys → +)</span>' : 'API key'} ${a.has_key ? '<span class="hint">(saved – leave empty to keep it for this address)</span>' : ''}<input type="password" class="key" autocomplete="off"></label>
+        <label>${nzb ? `Password <span class="hint">(${nzb[1]})</span>` : key === 'jellyfin' ? 'API key <span class="hint">(Dashboard → API Keys → +)</span>' : key === 'plex' ? 'Token <span class="hint">(X-Plex-Token: open any item → ⋯ → Get Info → View XML, it is at the end of the address)</span>' : 'API key'} ${a.has_key ? '<span class="hint">(saved – leave empty to keep it for this address)</span>' : ''}<input type="password" class="key" autocomplete="off"></label>
       </div>
       <label>Open in the browser at <span class="hint">(optional, if not the URL above; clicking the worker in the office opens it)</span><input type="url" class="web" value="${esc(a.web_url || '')}" placeholder="https://radarr.home.lan"></label>
       <div class="row"><label class="check"><input type="checkbox" class="verify" ${a.verify_tls !== false ? 'checked' : ''}> Check the certificate (https)</label>

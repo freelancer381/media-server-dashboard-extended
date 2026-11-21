@@ -758,8 +758,92 @@ const desks = DESKS.map(([x, z], i) => {
   rbox(0.58, 0.55, 0.1, 0.05, chairC, 0, 0.82, 0.3, chair).rotation.x = -0.08;
   cyl(0.025, 0.025, 0.3, '#4a4f61', 0, 0.55, 0.3, chair, 10);
   for (const sx of [-0.32, 0.32]) { rbox(0.06, 0.04, 0.32, 0.02, '#4a4f61', sx, 0.66, 0.05, chair); cyl(0.015, 0.015, 0.16, '#4a4f61', sx, 0.58, 0.12, chair, 8); }
-  return { screenMat };
+  return { screenMat, group: d };
 });
+
+// ---------- the media server's projector: its worker brings it to whichever desk they sit at ----------
+// It shows up once they sit down and is gone when they leave, so the desk is free for anyone afterwards.
+// With Jellyfin and Plex both set up, it is the one that fills the Home Cinema card's (the server decides).
+let projector = null;
+function updateProjector() {
+  const p = Object.values(people).find((q) => q.projector);
+  const k = p && p.root.visible && p.where === 'desk' && !p.path.length && !p.panicking ? p.seat : null;
+  if (k == null || k >= DESKS.length) { if (projector) { projector.group.visible = false; projector.set(''); } return; }
+  projector ||= makeProjector(p.s.color);
+  if (projector.group.parent !== desks[k].group) desks[k].group.add(projector.group);
+  projector.group.visible = true;
+  projector.set(p.showing);
+}
+function makeProjector(color) {
+  const font = '-apple-system, Helvetica, sans-serif';
+  const tex = canvasTexture(512, 300, (g, w, h, title = '') => {
+    if (!title) { g.fillStyle = '#ece8e0'; g.fillRect(0, 0, w, h); return; }  // off: a plain screen
+    const glow = g.createRadialGradient(w / 2, h / 2, 30, w / 2, h / 2, w * 0.62);
+    glow.addColorStop(0, '#fff7e0'); glow.addColorStop(1, '#f3b878');
+    g.fillStyle = glow; g.fillRect(0, 0, w, h);
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = '#c4531c'; g.font = `800 30px ${font}`;
+    g.fillText('▶ NOW SHOWING', w / 2, 46);
+    // the title as big as fits: two lines at most, smaller type for long ones
+    g.fillStyle = '#2a2a30';
+    let size = 76, lines;
+    do {
+      g.font = `800 ${size}px ${font}`;
+      lines = [];
+      for (const word of title.split(' ')) {
+        const last = lines[lines.length - 1];
+        if (last !== undefined && g.measureText(last + ' ' + word).width < w - 40) lines[lines.length - 1] = last + ' ' + word;
+        else lines.push(word);
+      }
+      size -= 6;
+    } while ((lines.length > 2 || lines.some((l) => g.measureText(l).width > w - 40)) && size > 34);
+    if (lines.length > 2) { lines.length = 2; lines[1] = lines[1].replace(/\s*\S*$/, '') + ' …'; }
+    const lh = size + 10;
+    lines.forEach((l, i) => g.fillText(l, w / 2, 172 + (i - (lines.length - 1) / 2) * lh));
+  });
+  const g = group(0, 0, 0);
+  // the projector on the right of the desk, its lens to the back
+  rbox(0.34, 0.13, 0.3, 0.03, '#2a2a30', 0.85, 0.875, 0.04, g);
+  box(0.35, 0.025, 0.31, color, 0.85, 0.875, 0.04, g);  // a band in the worker's colour round the middle
+  for (let i = 0; i < 4; i++) box(0.012, 0.006, 0.16, '#55585f', 0.76 + i * 0.03, 0.942, 0.08, g);  // vent slots
+  const lens = cyl(0.058, 0.058, 0.05, '#1b1b1f', 0.85, 0.875, -0.13, g); lens.rotation.x = Math.PI / 2;
+  const glassMat = mat('#3a4560', { emissive: '#fff1c8', emissiveIntensity: 0, roughness: 0.2 });
+  const glass = cyl(0.042, 0.042, 0.012, glassMat, 0.85, 0.875, -0.157, g); glass.rotation.x = Math.PI / 2;
+  // a roll-up screen on a stand behind the desk
+  const SX = 0.85, SY = 1.98, SZ = -0.86;
+  for (let a = 0; a < 3; a++) {  // tripod feet
+    const leg = rbox(0.03, 0.02, 0.32, 0.01, '#3a3f52', 0, 0.02, 0.14, group(SX, 0, SZ - 0.04, g, a / 3 * Math.PI * 2 + 0.5));
+    leg.castShadow = false;
+  }
+  cyl(0.018, 0.018, 2.42, '#3a3f52', SX, 1.21, SZ - 0.04, g, 12);
+  const roll = cyl(0.05, 0.05, 1.3, '#2a2a30', SX, SY + 0.39, SZ, g, 16); roll.rotation.z = Math.PI / 2;
+  rbox(1.22, 0.03, 0.03, 0.01, '#2a2a30', SX, SY - 0.37, SZ, g);  // the weighted bottom bar
+  const screenMat = mat('#ffffff', { map: tex, emissive: '#ffffff', emissiveMap: tex, emissiveIntensity: 0, roughness: 0.9 });
+  plane(1.2, 0.72, screenMat, SX, SY, SZ + 0.02, 0, 0, g);
+  // the beam: a faint cone of light from the lens to the screen, only while something plays
+  const from = new THREE.Vector3(0.85, 0.875, -0.165), to = new THREE.Vector3(SX, SY, SZ + 0.03);
+  const len = from.distanceTo(to);
+  const beamGeo = new THREE.ConeGeometry(0.36, len, 32, 1, true);
+  beamGeo.translate(0, -len / 2, 0);  // the tip at the lens, the wide end at the screen
+  const beam = new THREE.Mesh(beamGeo, new THREE.MeshBasicMaterial({ color: '#fff0c0', transparent: true, opacity: 0.13, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
+  beam.position.copy(from);
+  beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), to.clone().sub(from).normalize());
+  beam.raycast = () => {};
+  beam.visible = false;
+  g.add(beam);
+  let shown = null;
+  return {
+    group: g,
+    set(title) {
+      if (title === shown) return;
+      shown = title;
+      tex.redraw(title);
+      screenMat.emissiveIntensity = title ? 0.85 : 0;
+      glassMat.emissiveIntensity = title ? 1.6 : 0;
+      beam.visible = !!title;
+    },
+  };
+}
 // parcels waiting beside the download client's desk
 const parcels = [];
 for (let i = 0; i < 12; i++) {
@@ -1077,6 +1161,7 @@ function cartoon(rootObj) {
 const STAFF = {
   'Home Cinema': { color: '#5fcdb4', trim: '#ffffff', pants: '#3a4060', hair: '#3b2a20', style: 'short', skin: '#f1d3b8', extra: 'frames', eye: '#6b4a2f', quips: ['Nobody watching. Popcorn time 🍿', 'Library looks great', 'Waiting for movie night'] },
   Jellyfin: { color: '#aa5cc3', trim: '#00a4dc', pants: '#2f3550', hair: '#2b1d16', style: 'long', skin: '#e8b994', extra: 'headphones', eye: '#4a3020', quips: ['Nobody is watching right now', 'Library scan done ✓', 'Popcorn is ready 🍿'] },
+  Plex: { color: '#f2762e', trim: '#2a2a30', pants: '#2a2a30', hair: '#e9e4da', style: 'short', skin: '#c68a62', extra: 'bowtie', eye: '#2f5d8a', quips: ['Nobody is watching right now', 'Posters all fetched ✓', 'Waiting for movie night 🍿'] },
   Radarr: { color: '#f2c94c', trim: '#c79a1a', pants: '#2f3550', hair: '#1f1a17', style: 'curly', skin: '#a9774f', extra: 'glasses', eye: '#3b2a1a', quips: ['No movies to grab', 'Wanted list checked ✓', 'Coffee first ☕'] },
   Sonarr: { color: '#6fb3f2', trim: '#ffffff', pants: '#4a3f35', hair: '#7a4a24', style: 'long', skin: '#f3d6c1', extra: 'headphones', eye: '#3f7fbf', quips: ['No new episodes yet', 'All caught up', 'Your serve!'] },
   Bazarr: { color: '#a98cf0', trim: '#f2c94c', pants: '#2c2c3a', hair: '#e2c26b', style: 'bun', skin: '#e8b994', extra: 'bowtie', eye: '#3f9a66', quips: ['Subtitles all done', 'Nothing to translate', 'Mmm, coffee'] },
@@ -1308,9 +1393,31 @@ function makePerson(name, i) {
 }
 
 const people = {};
+// Free seating: whoever has work takes a free desk and gives it back on their break, so a worker who is
+// idle or out blocks nobody. Seats 0-5 are the desks, 6-10 the places at the whiteboard, used only while
+// every desk is taken. A worker goes back to the desk they had last if it is free; otherwise free desks
+// are taken nearest the walkway from the break room first, so the walk is short.
+const DESK_ORDER = DESKS.map((_, k) => k).sort((a, b) => Math.abs(DESKS[a][0] - CORRIDOR_X) - Math.abs(DESKS[b][0] - CORRIDOR_X) || DESKS[a][1] - DESKS[b][1]);
+const BOARD_SEATS = BOARD_SPOTS.map((_, k) => DESKS.length + k);
+function assignSeats() {
+  const all = Object.values(people);
+  for (const p of all) {
+    if (p.seat != null && (!p.up || p.want === 'break')) { p.lastSeat = p.seat; p.seat = null; }  // a panic keeps the seat
+  }
+  const taken = new Set(all.filter((p) => p.seat != null).map((p) => p.seat));
+  for (const p of all.filter((q) => q.want === 'desk' && q.seat == null).sort((a, b) => a.i - b.i)) {
+    const order = [...(p.lastSeat < DESKS.length ? [p.lastSeat] : []), ...DESK_ORDER, ...BOARD_SEATS];
+    // more than eleven busy at once: the whiteboard places are shared (rare enough not to matter)
+    p.seat = order.find((k) => !taken.has(k)) ?? BOARD_SEATS[p.i % BOARD_SEATS.length];
+    taken.add(p.seat);
+  }
+}
+// The seat a worker has, or the one they are walking away from.
+const seatNo = (p) => p.seat ?? p.lastSeat ?? BOARD_SEATS[0];
 function seatOf(p) {
-  if (p.i >= DESKS.length) return BOARD_SPOTS[(p.i - DESKS.length) % BOARD_SPOTS.length];
-  const d = DESKS[p.i];
+  const k = seatNo(p);
+  if (k >= DESKS.length) return BOARD_SPOTS[k - DESKS.length];
+  const d = DESKS[k];
   return { at: [d[0], d[1] + 0.88], face: Math.PI, pose: 'type' };
 }
 function place(p, spot) { p.root.position.set(spot.at[0], 0, spot.at[1]); p.root.rotation.y = spot.face; p.pose = spot; }
@@ -1363,7 +1470,7 @@ function send(p, where, instant) {
     return;
   }
   const seat = seatOf(p);
-  const aisle = p.i < DESKS.length ? AISLES[DESKS[p.i][1] > 0 ? 1 : 0] : AISLES[0];
+  const aisle = aisleOf(p);
   const brk = breakOf(p);
   const toBreak = [[seat.at[0], aisle], [CORRIDOR, aisle], ...(brk.via || []), brk.at];
   p.path = (where === 'desk' ? [...toBreak.slice(0, -1).reverse(), spot.at] : toBreak).map(([x, z]) => new THREE.Vector3(x, 0, z));
@@ -1516,7 +1623,7 @@ function placeLabels() {
   const items = [];
   for (const p of Object.values(people)) {
     p.label.classList.toggle('running', !!p.panicking);
-    const pos = p.root.position, home = seatOf(p).at;
+    const pos = p.root.position, home = (p.seat ?? p.lastSeat) != null ? seatOf(p).at : breakOf(p).at;
     const [x, y] = p.root.visible ? project(pos.x, pos.y + 2.05, pos.z) : project(home[0], 1.2, home[1] + 0.1);
     items.push({ el: p.label, x, y });
   }
@@ -1604,7 +1711,7 @@ function setPanic(on) {
     }, 2200);
   }
 }
-const aisleOf = (p) => (p.i < DESKS.length ? AISLES[DESKS[p.i][1] > 0 ? 1 : 0] : AISLES[0]);
+const aisleOf = (p) => (seatNo(p) < DESKS.length ? AISLES[DESKS[seatNo(p)][1] > 0 ? 1 : 0] : AISLES[0]);
 const v3 = ([x, z]) => new THREE.Vector3(x, 0, z);
 function panicStep(p) {
   if (!p.root.visible) return;
@@ -1643,7 +1750,6 @@ function panicStep(p) {
 }
 
 // ---------- live data ----------
-const NO_DESK = { screenMat: new THREE.MeshStandardMaterial() };
 let first = true;
 // A newer release, an update running, or the result of the last one: shown on the dashboard and in the office.
 function updateBanner(d) {
@@ -1672,10 +1778,6 @@ function render(d) {
     const p = people[svc.name] || (people[svc.name] = makePerson(svc.name, Object.keys(people).length));
     const bad = svc.issues.some((a) => a.level === 'error');
     const issue = svc.issues.map((a) => a.message).join('\n');
-    const desk = desks[p.i] || NO_DESK;  // staff at the whiteboard have no screen to light up
-    const on = svc.up && !!svc.task;
-    desk.screenMat.emissive.set(on ? p.s.color : '#000000');
-    desk.screenMat.emissiveIntensity = on ? 1.1 : 0;
     p.root.visible = svc.up;
     p.label.querySelector('.dot').className = 'dot ' + (!svc.up || bad ? 'error' : svc.issues.length ? 'warning' : '');
     const status = p.label.querySelector('span');
@@ -1685,11 +1787,18 @@ function render(d) {
     const badge = p.label.querySelector('.badge');
     badge.classList.toggle('show', svc.issues.length > 0);
     badge.classList.toggle('error', bad || !svc.up);
-    Object.assign(p, { up: svc.up, task: svc.task, issue, url: svc.url });
+    Object.assign(p, { up: svc.up, task: svc.task, issue, url: svc.url, projector: !!svc.projector, showing: svc.showing || '' });
     p.label.querySelector('.tag').classList.toggle('link', !!svc.url);
     p.want = null;
     if (!svc.up) { p.where = null; p.path = []; p.brk = null; return; }
     if (!panic && !p.panicking) p.want = svc.task ? 'desk' : 'break';
+  });
+  assignSeats();
+  desks.forEach((desk, k) => {  // a desk's screen shows its worker's colour while they have work
+    const p = Object.values(people).find((q) => q.seat === k);
+    const on = !!(p && p.up && p.task);
+    desk.screenMat.emissive.set(on ? p.s.color : '#000000');
+    desk.screenMat.emissiveIntensity = on ? 1.1 : 0;
   });
   planBreaks(first);
   first = false;
@@ -2076,6 +2185,7 @@ const clock = new THREE.Clock();
 function frame() {
   const dt = Math.min(clock.getDelta(), 0.1), t = clock.elapsedTime;
   for (const p of Object.values(people)) if (p.root.visible) animate(p, dt, t);
+  updateProjector();
   code.offset.y = (code.offset.y + dt * 0.08) % 1;
   rally(t);
   animateDataCenter(dt);

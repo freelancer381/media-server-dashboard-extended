@@ -5,7 +5,15 @@ becomes its GitHub release text, so write it for the people who run the dashboar
 
 ## Unreleased
 
+Added:
+- Plex as a built-in app (Settings → Apps, with its token: open any item → ⋯ → Get Info → View XML, the `X-Plex-Token` at the end of the address). It does what Jellyfin does: who is watching what, with progress, device and transcoding; the latest watched; the library's numbers; "is watching" lines in the live feed. It fills the dashboard's Home Cinema card and the TV above the office couch, the office has a Plex worker who sits at a desk while something streams, posters open in it, and the statistics show streams and transcodes. With Jellyfin and Plex both set up, Jellyfin fills the Home Cinema card and each worker still shows what it is streaming. A Plex added as a custom app before keeps working; switch on the built-in one and remove the custom entry to get all of this.
+- Office: the media server brings a projector to its desk. Once its worker sits down to stream, a beam lights a roll-up screen behind the desk with the title; when they leave, it goes with them. With Jellyfin and Plex both set up, it is the one that fills the Home Cinema card's (Jellyfin).
+
+Changed:
+- Office: the desks are free seating. Whoever has work takes a free desk and gives it back on their break, so an idle or stopped app no longer blocks one. Before, the first six apps had a desk each and the rest always worked standing at the whiteboard, even with desks empty; now the whiteboard is only used while all six desks are taken. A worker goes back to the desk they had last when it is free, so with six apps or fewer everyone keeps their own desk. Workers at the whiteboard no longer stand inside each other with more than eleven apps (only with more than eleven busy at once).
+
 Fixed:
+- With a built-in Jellyfin, the first look for problems after a start failed (`watch_alerts: KeyError`) because Jellyfin hadn't been asked yet.
 - Settings → Updates: typing the password to install an update could suddenly stop going into the field, and what was typed was gone. The page redrew the release card, password field included, every time it refreshed the update status (every few seconds). It now redraws it only when the release changes. Enter in the password field installs, and the automatic-update choice no longer jumps back while being changed.
 
 ## 0.5.3 - 2026-11-05

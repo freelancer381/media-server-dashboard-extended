@@ -159,7 +159,7 @@ body.idle, body.idle * { cursor: none !important; }
       <div class="card glass w4"><h2>Busiest apps</h2><div class="bars" id="sources"></div></div>
       <div class="card glass w4"><h2>How events arrive</h2><div class="bars" id="via"></div><h3>Levels</h3><div class="bars" id="levels"></div></div>
       <div class="card glass w4"><h2>Team board</h2><div class="bars" id="team"></div><div class="stat-row" id="sTeam"></div></div>
-      <div class="card glass w12"><h2>Streams, open problems and viewers <small>Jellyfin streams, active alerts, open dashboard pages</small></h2><div class="legend" id="lAl"></div><div class="chart" id="cAl"></div></div>
+      <div class="card glass w12"><h2>Streams, open problems and viewers <small>Media server streams, active alerts, open dashboard pages</small></h2><div class="legend" id="lAl"></div><div class="chart" id="cAl"></div></div>
     </div>
   </section>
 
@@ -559,7 +559,7 @@ function render(d) {
   if (jf) {
     const L = jf.library || {};
     const plays = days.slice(-rangeDays).reduce((a, x) => a + ((x.kinds || {}).play || 0), 0);
-    libCards.push(`<div class="card glass w4"><h2>Jellyfin <small>${esc(jf.server || '')} · ${esc(jf.version || '')}</small></h2><dl class="facts">
+    libCards.push(`<div class="card glass w4"><h2>${esc(jf.app || 'Jellyfin')} <small>${esc(jf.server || '')} · ${esc(jf.version || '')}</small></h2><dl class="facts">
       ${[['Movies', L.movies], ['Shows', L.series], ['Episodes', L.episodes], ['Songs', L.songs], ['Albums', L.albums], ['Books', L.books]].filter(([, v]) => v).map(([k, v]) => `<dt>${k}</dt><dd>${num(v)}</dd>`).join('')}
       <dt>Profiles</dt><dd>${esc((jf.profiles || []).join(', ') || '–')}</dd><dt>Plays</dt><dd>${num(plays)} ${rangeDays === 1 ? 'today' : `in ${rangeDays} days`}</dd></dl>
       <h3>Latest watched</h3><div class="bars" id="jfWatched"></div></div>`);
